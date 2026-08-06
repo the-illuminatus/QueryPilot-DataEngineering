@@ -22,4 +22,8 @@ public final class ApplicationConstants {
     // Formatting
     public static final String DEFAULT_DATE_TIME_PATTERN = "yyyy-MM-dd'T'HH:mm:ss";
     public static final String DEFAULT_DATE_PATTERN = "yyyy-MM-dd";
+
+    // User domain messages
+    public static final String EMAIL_ALREADY_EXISTS_MESSAGE = "An account with this email already exists.";
+    public static final String USERNAME_ALREADY_EXISTS_MESSAGE = "This username is already taken.";
 }
