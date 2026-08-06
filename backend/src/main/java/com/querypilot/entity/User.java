@@ -2,6 +2,8 @@ package com.querypilot.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -20,8 +22,8 @@ import java.time.LocalDateTime;
 /**
  * Persistent representation of an application user.
  * <p>
- * This entity is the authentication domain foundation only — it carries no
- * behavior related to login, token issuance, or authorization. Timestamps are
+ * Carries a single {@link Role} for authorization and the
+ * {@link AuthenticationProvider} the account originated from. Timestamps are
  * managed manually via lifecycle callbacks since JPA auditing is not yet
  * configured for the project.
  */
@@ -60,6 +62,14 @@ public class User {
     @Column(nullable = false)
     @Builder.Default
     private boolean active = true;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Role role;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "authentication_provider", nullable = false, length = 20)
+    private AuthenticationProvider authenticationProvider;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

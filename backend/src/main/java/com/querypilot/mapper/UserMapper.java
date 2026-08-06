@@ -1,7 +1,10 @@
 package com.querypilot.mapper;
 
 import com.querypilot.dto.request.RegisterRequest;
+import com.querypilot.dto.response.LoginResponse;
 import com.querypilot.dto.response.RegisterResponse;
+import com.querypilot.entity.AuthenticationProvider;
+import com.querypilot.entity.Role;
 import com.querypilot.entity.User;
 
 /**
@@ -14,7 +17,10 @@ public final class UserMapper {
     }
 
     /**
-     * Builds a new {@link User} from a registration request.
+     * Builds a new {@link User} from a registration request. Every
+     * self-registered account is created with {@link Role#USER} and
+     * {@link AuthenticationProvider#LOCAL} — this is the only registration
+     * path today.
      *
      * @param request         the incoming registration payload
      * @param encodedPassword the already BCrypt-encoded password; this mapper
@@ -28,6 +34,8 @@ public final class UserMapper {
                 .firstName(request.getFirstName())
                 .lastName(request.getLastName())
                 .active(true)
+                .role(Role.USER)
+                .authenticationProvider(AuthenticationProvider.LOCAL)
                 .build();
     }
 
@@ -39,6 +47,16 @@ public final class UserMapper {
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
                 .createdAt(user.getCreatedAt())
+                .build();
+    }
+
+    public static LoginResponse toLoginResponse(User user) {
+        return LoginResponse.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
                 .build();
     }
 }

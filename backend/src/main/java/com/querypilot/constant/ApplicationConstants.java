@@ -26,4 +26,10 @@ public final class ApplicationConstants {
     // User domain messages
     public static final String EMAIL_ALREADY_EXISTS_MESSAGE = "An account with this email already exists.";
     public static final String USERNAME_ALREADY_EXISTS_MESSAGE = "This username is already taken.";
+    public static final String USER_NOT_FOUND_MESSAGE = "No account exists for the given email.";
+
+    // Authentication flow messages
+    public static final String REGISTRATION_SUCCESS_MESSAGE = "User registered successfully.";
+    public static final String LOGIN_SUCCESS_MESSAGE = "User logged in successfully.";
+    public static final String INVALID_CREDENTIALS_MESSAGE = "Invalid email or password.";
 }
