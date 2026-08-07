@@ -9,6 +9,11 @@ spring:
       ddl-auto: create-drop
     show-sql: false
 
+jwt:
+  secret: test-only-jwt-secret-for-querypilot-automated-tests
+  expiration: 900000
+  issuer: QueryPilot
+
 logging:
   level:
     com.querypilot: INFO
