@@ -106,6 +106,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage() != null ? ex.getMessage() : ApplicationConstants.GENERIC_ERROR_MESSAGE));
     }
 
+    @ExceptionHandler(InvalidSqlException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidSql(InvalidSqlException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(ex.getMessage() != null ? ex.getMessage() : ApplicationConstants.BAD_REQUEST_MESSAGE));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGenericException(Exception ex) {
         // Intentionally does not expose ex.getMessage() or the stack trace to the client.

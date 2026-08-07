@@ -45,4 +45,10 @@ public final class ApplicationConstants {
     public static final String LLM_TIMEOUT_MESSAGE = "The AI model did not respond in time. Please try again.";
     public static final String LLM_REQUEST_FAILED_MESSAGE = "The AI model request failed. Please try again later.";
     public static final String LLM_EMPTY_RESPONSE_MESSAGE = "The AI model returned an empty response. Please try again.";
+
+    // SQL validation messages
+    public static final String SQL_EMPTY_MESSAGE = "Generated SQL is empty.";
+    public static final String SQL_COMMENTS_NOT_ALLOWED_MESSAGE = "SQL comments are not allowed.";
+    public static final String SQL_MULTIPLE_STATEMENTS_MESSAGE = "Multiple SQL statements are not allowed.";
+    public static final String SQL_ONLY_SELECT_ALLOWED_MESSAGE = "Only read-only SELECT statements are allowed.";
 }
