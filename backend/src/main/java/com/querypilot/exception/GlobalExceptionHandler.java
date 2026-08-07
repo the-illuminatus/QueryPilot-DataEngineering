@@ -97,6 +97,15 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage() != null ? ex.getMessage() : ApplicationConstants.GENERIC_ERROR_MESSAGE));
     }
 
+    @ExceptionHandler(LLMException.class)
+    public ResponseEntity<ApiResponse<Void>> handleLLMException(LLMException ex) {
+        // ex.getMessage() is always authored by the throwing client (network
+        // failure / timeout / empty response) — never the provider's raw
+        // error body — so it is safe to return as-is.
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ApiResponse.error(ex.getMessage() != null ? ex.getMessage() : ApplicationConstants.GENERIC_ERROR_MESSAGE));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGenericException(Exception ex) {
         // Intentionally does not expose ex.getMessage() or the stack trace to the client.
