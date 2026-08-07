@@ -13,3 +13,9 @@ jwt:
   secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION:900000}
   issuer: ${JWT_ISSUER:QueryPilot}
+
+gemini:
+  api-key: ${GEMINI_API_KEY}
+  model: ${GEMINI_MODEL:gemini-1.5-flash}
+  endpoint: ${GEMINI_ENDPOINT:https://generativelanguage.googleapis.com/v1beta/models}
+  timeout: ${GEMINI_TIMEOUT:15000}
