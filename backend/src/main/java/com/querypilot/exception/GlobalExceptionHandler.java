@@ -2,6 +2,7 @@ package com.querypilot.exception;
 
 import com.querypilot.constant.ApplicationConstants;
 import com.querypilot.dto.response.ApiResponse;
+import io.jsonwebtoken.JwtException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
@@ -73,6 +74,15 @@ public class GlobalExceptionHandler {
         // password — never reveals which one caused the failure.
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ApiResponse.error(ApplicationConstants.INVALID_CREDENTIALS_MESSAGE));
+    }
+
+    @ExceptionHandler(JwtException.class)
+    public ResponseEntity<ApiResponse<Void>> handleJwtException(JwtException ex) {
+        // Covers ExpiredJwtException, MalformedJwtException,
+        // UnsupportedJwtException, and io.jsonwebtoken.security.SecurityException
+        // — all subtypes of JwtException. Never exposes which one occurred.
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error(ApplicationConstants.UNAUTHORIZED_MESSAGE));
     }
 
     @ExceptionHandler(ValidationException.class)

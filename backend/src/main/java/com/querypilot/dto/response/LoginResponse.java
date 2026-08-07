@@ -6,10 +6,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Public-facing representation of an authenticated user.
- * <p>
- * Defined as part of the authentication domain foundation; deliberately
- * carries no token/session data since login is not implemented yet.
+ * JWT access token issued after successful authentication. Carries no
+ * profile data or refresh token — only what the client needs to authorize
+ * subsequent requests.
  */
 @Data
 @Builder
@@ -17,9 +16,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class LoginResponse {
 
-    private Long id;
-    private String username;
-    private String email;
-    private String firstName;
-    private String lastName;
+    private String tokenType;
+    private String accessToken;
 }

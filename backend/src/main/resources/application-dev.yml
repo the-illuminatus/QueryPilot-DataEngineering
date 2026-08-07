@@ -9,6 +9,9 @@ spring:
     hibernate:
       ddl-auto: update
 
+jwt:
+  secret: ${JWT_SECRET:dev-only-insecure-jwt-secret-override-with-JWT_SECRET-env-var}
+
 logging:
   level:
     com.querypilot: DEBUG
