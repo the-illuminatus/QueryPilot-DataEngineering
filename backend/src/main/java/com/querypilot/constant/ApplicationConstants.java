@@ -32,4 +32,8 @@ public final class ApplicationConstants {
     public static final String REGISTRATION_SUCCESS_MESSAGE = "User registered successfully.";
     public static final String LOGIN_SUCCESS_MESSAGE = "User logged in successfully.";
     public static final String INVALID_CREDENTIALS_MESSAGE = "Invalid email or password.";
+
+    // Metadata domain messages
+    public static final String SCHEMA_NOT_FOUND_MESSAGE = "The requested schema could not be found.";
+    public static final String TABLE_NOT_FOUND_MESSAGE = "The requested table could not be found.";
 }
