@@ -9,22 +9,26 @@ import com.querypilot.dto.response.PromptResponse;
 import com.querypilot.dto.response.QueryResponse;
 import com.querypilot.service.PromptService;
 import com.querypilot.service.QueryService;
+import com.querypilot.validator.SQLValidator;
 import org.springframework.stereotype.Service;
 
 /**
  * Default {@link QueryService} implementation. Depends only on
- * {@link PromptService} and the {@link LLMClient} abstraction — never on
- * {@code GeminiClient} or any other provider-specific type.
+ * {@link PromptService}, the {@link LLMClient} abstraction, and
+ * {@link SQLValidator} — never on {@code GeminiClient},
+ * {@code DefaultSQLValidator}, or any other implementation-specific type.
  */
 @Service
 public class QueryServiceImpl implements QueryService {
 
     private final PromptService promptService;
     private final LLMClient llmClient;
+    private final SQLValidator sqlValidator;
 
-    public QueryServiceImpl(PromptService promptService, LLMClient llmClient) {
+    public QueryServiceImpl(PromptService promptService, LLMClient llmClient, SQLValidator sqlValidator) {
         this.promptService = promptService;
         this.llmClient = llmClient;
+        this.sqlValidator = sqlValidator;
     }
 
     @Override
@@ -34,6 +38,8 @@ public class QueryServiceImpl implements QueryService {
 
         LLMResponse llmResponse = llmClient.generate(
                 LLMRequest.builder().prompt(prompt.getPrompt()).build());
+
+        sqlValidator.validate(llmResponse.getContent());
 
         return QueryResponse.builder().sql(llmResponse.getContent()).build();
     }
