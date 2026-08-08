@@ -41,7 +41,6 @@ public final class ApplicationConstants {
     public static final String PROMPT_GENERATED_SUCCESS_MESSAGE = "Prompt generated successfully.";
 
     // Query / LLM domain messages
-    public static final String SQL_GENERATED_SUCCESS_MESSAGE = "SQL generated successfully.";
     public static final String LLM_TIMEOUT_MESSAGE = "The AI model did not respond in time. Please try again.";
     public static final String LLM_REQUEST_FAILED_MESSAGE = "The AI model request failed. Please try again later.";
     public static final String LLM_EMPTY_RESPONSE_MESSAGE = "The AI model returned an empty response. Please try again.";

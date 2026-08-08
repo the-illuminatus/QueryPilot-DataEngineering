@@ -7,7 +7,10 @@ import com.querypilot.dto.request.UpdateSavedQueryRequest;
 import com.querypilot.dto.response.ApiResponse;
 import com.querypilot.dto.response.SavedQueryResponse;
 import com.querypilot.service.SavedQueryService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,6 +31,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping(ApiConstants.API_BASE_PATH + "/saved-queries")
+@Tag(name = "Saved Queries", description = "Queries the authenticated user has chosen to keep for future reuse, independent of query history.")
 public class SavedQueryController {
 
     private final SavedQueryService savedQueryService;
@@ -37,22 +41,27 @@ public class SavedQueryController {
     }
 
     @PostMapping
+    @Operation(summary = "Save a query for future reuse")
     public ResponseEntity<ApiResponse<SavedQueryResponse>> create(@Valid @RequestBody CreateSavedQueryRequest request) {
         SavedQueryResponse response = savedQueryService.save(request);
-        return ResponseEntity.ok(ApiResponse.success(ApplicationConstants.SAVED_QUERY_CREATED_SUCCESS_MESSAGE, response));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(ApplicationConstants.SAVED_QUERY_CREATED_SUCCESS_MESSAGE, response));
     }
 
     @GetMapping
+    @Operation(summary = "List the authenticated user's saved queries, most recently updated first")
     public ResponseEntity<ApiResponse<List<SavedQueryResponse>>> getSavedQueries() {
         return ResponseEntity.ok(ApiResponse.success(savedQueryService.getCurrentUserSavedQueries()));
     }
 
     @GetMapping("/{id}")
+    @Operation(summary = "Get one saved query")
     public ResponseEntity<ApiResponse<SavedQueryResponse>> getSavedQuery(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(savedQueryService.getSavedQuery(id)));
     }
 
     @PutMapping("/{id}")
+    @Operation(summary = "Rename a saved query")
     public ResponseEntity<ApiResponse<SavedQueryResponse>> updateTitle(@PathVariable Long id,
             @Valid @RequestBody UpdateSavedQueryRequest request) {
         SavedQueryResponse response = savedQueryService.updateTitle(id, request);
@@ -60,6 +69,7 @@ public class SavedQueryController {
     }
 
     @DeleteMapping("/{id}")
+    @Operation(summary = "Delete a saved query")
     public ResponseEntity<ApiResponse<Void>> deleteSavedQuery(@PathVariable Long id) {
         savedQueryService.deleteSavedQuery(id);
         return ResponseEntity.ok(ApiResponse.success(ApplicationConstants.SAVED_QUERY_DELETED_SUCCESS_MESSAGE, null));

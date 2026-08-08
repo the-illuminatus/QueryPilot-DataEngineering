@@ -11,7 +11,6 @@ public final class ApiConstants {
     public static final String API_VERSION = "v1";
     public static final String API_BASE_PATH = "/api/" + API_VERSION;
 
-    public static final String CONTENT_TYPE_JSON = "application/json";
     public static final String CONTENT_TYPE_CSV = "text/csv";
     public static final String CONTENT_TYPE_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 

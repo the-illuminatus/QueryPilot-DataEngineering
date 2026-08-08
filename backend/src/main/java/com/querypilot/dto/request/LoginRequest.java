@@ -8,10 +8,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Payload for authenticating an existing user.
- * <p>
- * Defined as part of the authentication domain foundation; no login flow
- * consumes it yet.
+ * Payload for authenticating an existing user via
+ * {@code POST /api/v1/auth/login}.
  */
 @Data
 @Builder

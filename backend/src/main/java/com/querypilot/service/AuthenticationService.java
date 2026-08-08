@@ -6,8 +6,8 @@ import com.querypilot.dto.response.LoginResponse;
 import com.querypilot.dto.response.RegisterResponse;
 
 /**
- * Orchestrates the authentication flow (registration and login). Contains
- * no token issuance — that is out of scope for this sprint.
+ * Orchestrates the authentication flow (registration and login). Login
+ * issues a JWT access token via {@link JwtService} on success.
  */
 public interface AuthenticationService {
 

@@ -13,6 +13,9 @@ public final class SecurityConstants {
     public static final String BEARER_TOKEN_TYPE = "Bearer";
 
     public static final String[] PUBLIC_ENDPOINTS = {
-            ApiConstants.API_BASE_PATH + "/auth/**"
+            ApiConstants.API_BASE_PATH + "/auth/**",
+            "/v3/api-docs/**",
+            "/swagger-ui/**",
+            "/swagger-ui.html"
     };
 }
