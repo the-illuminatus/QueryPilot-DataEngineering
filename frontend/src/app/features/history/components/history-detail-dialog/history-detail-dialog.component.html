@@ -1,0 +1,44 @@
+<h2 mat-dialog-title>Query Details</h2>
+
+<mat-dialog-content class="qp-history-detail">
+  <div class="qp-history-detail__row">
+    <span class="qp-history-detail__label">Status</span>
+    <span
+      class="qp-history-detail__value"
+      [class.qp-history-detail__value--success]="entry.status === 'SUCCESS'"
+      [class.qp-history-detail__value--failed]="entry.status === 'FAILED'"
+    >
+      <mat-icon>{{ entry.status === 'SUCCESS' ? 'check_circle' : 'error' }}</mat-icon>
+      {{ entry.status }}
+    </span>
+  </div>
+
+  <div class="qp-history-detail__row">
+    <span class="qp-history-detail__label">Executed At</span>
+    <span class="qp-history-detail__value">{{ entry.executedAt | date: 'medium' }}</span>
+  </div>
+
+  <div class="qp-history-detail__row">
+    <span class="qp-history-detail__label">Execution Time</span>
+    <span class="qp-history-detail__value">{{ entry.executionTimeMs }} ms</span>
+  </div>
+
+  <div class="qp-history-detail__row">
+    <span class="qp-history-detail__label">Row Count</span>
+    <span class="qp-history-detail__value">{{ entry.rowCount }}</span>
+  </div>
+
+  <div class="qp-history-detail__block">
+    <span class="qp-history-detail__label">Question</span>
+    <p class="qp-history-detail__question">{{ entry.question }}</p>
+  </div>
+
+  <div class="qp-history-detail__block">
+    <span class="qp-history-detail__label">Generated SQL</span>
+    <pre class="qp-history-detail__sql">{{ entry.generatedSql }}</pre>
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-flat-button color="primary" mat-dialog-close>Close</button>
+</mat-dialog-actions>
