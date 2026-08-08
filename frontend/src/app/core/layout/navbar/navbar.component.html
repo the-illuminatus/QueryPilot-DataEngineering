@@ -18,12 +18,16 @@
     <mat-icon>account_circle</mat-icon>
   </button>
   <mat-menu #userMenu="matMenu">
-    <button mat-menu-item>
+    @if (currentUser(); as user) {
+      <div class="qp-navbar__user-email">{{ user.email }}</div>
+      <mat-divider></mat-divider>
+    }
+    <button mat-menu-item (click)="goToProfile()">
       <mat-icon>person</mat-icon>
       <span>Profile</span>
     </button>
     <mat-divider></mat-divider>
-    <button mat-menu-item>
+    <button mat-menu-item (click)="logout()">
       <mat-icon>logout</mat-icon>
       <span>Logout</span>
     </button>

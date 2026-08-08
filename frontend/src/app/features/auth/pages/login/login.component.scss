@@ -9,4 +9,15 @@
     width: 100%;
     max-width: 400px;
   }
+
+  &__form {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  &__submit {
+    margin-top: 8px;
+    height: 40px;
+  }
 }
