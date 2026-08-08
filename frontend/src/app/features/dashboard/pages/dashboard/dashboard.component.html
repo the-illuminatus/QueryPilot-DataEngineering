@@ -1,8 +1,63 @@
-<mat-card class="qp-page">
-  <mat-card-header>
-    <mat-card-title>Dashboard</mat-card-title>
-  </mat-card-header>
-  <mat-card-content>
-    <p>Placeholder page. Dashboard functionality is not implemented yet.</p>
-  </mat-card-content>
-</mat-card>
+<div class="qp-dashboard">
+  <section class="qp-dashboard__welcome">
+    <h1 class="qp-dashboard__title">
+      @if (currentUser(); as user) {
+        Welcome back, <span class="qp-dashboard__username">{{ user.email }}</span>
+      } @else {
+        Welcome back
+      }
+    </h1>
+    <p class="qp-dashboard__subtitle">Here's what's happening with QueryPilot today.</p>
+  </section>
+
+  <section class="qp-dashboard__section">
+    <h2 class="qp-dashboard__section-title">Quick Actions</h2>
+    <div class="qp-quick-actions">
+      @for (action of quickActions; track action.route) {
+        <a class="qp-quick-action" [routerLink]="action.route">
+          <mat-card class="qp-quick-action__card" appearance="outlined">
+            <mat-icon class="qp-quick-action__icon">{{ action.icon }}</mat-icon>
+            <span class="qp-quick-action__label">{{ action.label }}</span>
+          </mat-card>
+        </a>
+      }
+    </div>
+  </section>
+
+  <mat-divider></mat-divider>
+
+  <section class="qp-dashboard__section">
+    <h2 class="qp-dashboard__section-title">Platform Features</h2>
+    <div class="qp-features">
+      @for (feature of features; track feature.title) {
+        @if (feature.route) {
+          <a class="qp-feature-link" [routerLink]="feature.route">
+            <mat-card class="qp-feature-card" appearance="outlined">
+              <mat-icon class="qp-feature-card__icon">{{ feature.icon }}</mat-icon>
+              <mat-card-title class="qp-feature-card__title">{{ feature.title }}</mat-card-title>
+              <mat-card-content class="qp-feature-card__description">{{ feature.description }}</mat-card-content>
+            </mat-card>
+          </a>
+        } @else {
+          <mat-card class="qp-feature-card qp-feature-card--static" appearance="outlined">
+            <mat-icon class="qp-feature-card__icon">{{ feature.icon }}</mat-icon>
+            <mat-card-title class="qp-feature-card__title">{{ feature.title }}</mat-card-title>
+            <mat-card-content class="qp-feature-card__description">{{ feature.description }}</mat-card-content>
+          </mat-card>
+        }
+      }
+    </div>
+  </section>
+
+  <mat-divider></mat-divider>
+
+  <section class="qp-dashboard__section">
+    <h2 class="qp-dashboard__section-title">Recent Activity</h2>
+    <mat-card class="qp-dashboard__activity" appearance="outlined">
+      <mat-card-content class="qp-dashboard__empty">
+        <mat-icon class="qp-dashboard__empty-icon">inbox</mat-icon>
+        <p>No recent activity.</p>
+      </mat-card-content>
+    </mat-card>
+  </section>
+</div>
