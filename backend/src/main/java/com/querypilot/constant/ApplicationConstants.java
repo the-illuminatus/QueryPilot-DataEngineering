@@ -50,6 +50,10 @@ public final class ApplicationConstants {
     public static final String QUERY_EXECUTED_SUCCESS_MESSAGE = "Query executed successfully.";
     public static final String SQL_EXECUTION_FAILED_MESSAGE = "Failed to execute the query against the database. Please verify your request and try again.";
 
+    // Query history domain messages
+    public static final String HISTORY_NOT_FOUND_MESSAGE = "The requested query history entry could not be found.";
+    public static final String HISTORY_DELETED_SUCCESS_MESSAGE = "Query history entry deleted successfully.";
+
     // SQL validation messages
     public static final String SQL_EMPTY_MESSAGE = "Generated SQL is empty.";
     public static final String SQL_COMMENTS_NOT_ALLOWED_MESSAGE = "SQL comments are not allowed.";
