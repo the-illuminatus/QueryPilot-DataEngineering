@@ -54,6 +54,13 @@ public final class ApplicationConstants {
     public static final String HISTORY_NOT_FOUND_MESSAGE = "The requested query history entry could not be found.";
     public static final String HISTORY_DELETED_SUCCESS_MESSAGE = "Query history entry deleted successfully.";
 
+    // Saved query domain messages
+    public static final String SAVED_QUERY_NOT_FOUND_MESSAGE = "The requested saved query could not be found.";
+    public static final String SAVED_QUERY_TITLE_DUPLICATE_MESSAGE = "You already have a saved query with this title.";
+    public static final String SAVED_QUERY_CREATED_SUCCESS_MESSAGE = "Query saved successfully.";
+    public static final String SAVED_QUERY_UPDATED_SUCCESS_MESSAGE = "Saved query updated successfully.";
+    public static final String SAVED_QUERY_DELETED_SUCCESS_MESSAGE = "Saved query deleted successfully.";
+
     // SQL validation messages
     public static final String SQL_EMPTY_MESSAGE = "Generated SQL is empty.";
     public static final String SQL_COMMENTS_NOT_ALLOWED_MESSAGE = "SQL comments are not allowed.";
