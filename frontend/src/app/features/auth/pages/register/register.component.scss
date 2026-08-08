@@ -1,0 +1,12 @@
+.qp-auth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+
+  &__card {
+    width: 100%;
+    max-width: 400px;
+  }
+}
