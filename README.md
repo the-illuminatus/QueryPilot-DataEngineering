@@ -5,20 +5,22 @@
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.4-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-blue)
-![Version](https://img.shields.io/badge/Version-v1.8.0-lightgrey)
+![Version](https://img.shields.io/badge/Version-v2.4--RC-lightgrey)
 
-QueryPilot lets users query relational databases in plain English. It is built on a modern Spring Boot backend designed around enterprise conventions — layered architecture, centralized error handling, JWT authentication, and a security-first foundation — with a metadata-aware prompt engineering layer and Google Gemini generating SQL directly from natural language questions.
+QueryPilot lets users query relational databases in plain English. It is built on a modern Spring Boot backend designed around enterprise conventions — layered architecture, centralized error handling, JWT authentication, and a security-first foundation — with a metadata-aware prompt engineering layer, Google Gemini generating SQL directly from natural language questions, and a full execution, history, and export pipeline behind it.
 
 ---
 
 ## Why QueryPilot?
 
-- **Natural language to SQL** — describe the data you want, and QueryPilot generates the SQL for you.
+- **Natural language to SQL** — describe the data you want, and QueryPilot generates, validates, and executes the SQL for you.
 - **AI-powered generation** — a metadata-aware Prompt Engine and Google Gemini turn plain English into SQL, not hand-written templates.
 - **PostgreSQL-aware** — SQL is grounded in real, live-discovered database metadata, not assumed schema.
+- **Safe by construction** — every generated statement passes through SQL validation before it is ever allowed to execute.
 - **Enterprise architecture** — a conventional, layered Spring Boot structure that scales with the team.
 - **Secure by design** — JWT authentication protects every endpoint beyond registration and login.
-- **Extensible core** — infrastructure (responses, exceptions, security, constants, the LLM abstraction) is built once and reused by every feature that follows.
+- **Extensible core** — infrastructure (responses, exceptions, security, constants, the LLM and database-execution abstractions) is built once and reused by every feature that follows.
+- **Self-documenting API** — a full OpenAPI/Swagger UI is generated directly from the live backend.
 
 ---
 
@@ -29,27 +31,28 @@ QueryPilot lets users query relational databases in plain English. It is built o
 | Area | Capability |
 |---|---|
 | ✔ | Java 21 / Spring Boot 3 REST API |
-| ✔ | Enterprise package structure (`client`, `config`, `service`, `security`, `exception`, …) |
+| ✔ | Enterprise package structure (`client`, `config`, `service`, `security`, `exception`, `export`, …) |
 | ✔ | Spring Security foundation (stateless, CSRF-disabled filter chain) |
 | ✔ | JWT authentication |
-| ✔ | User registration |
-| ✔ | User login |
+| ✔ | User registration and login |
 | ✔ | Global exception handling (`@RestControllerAdvice`) |
 | ✔ | Generic API response envelope |
 | ✔ | PostgreSQL metadata discovery |
 | ✔ | Prompt Engine (metadata-aware prompt construction) |
 | ✔ | Google Gemini integration |
 | ✔ | AI-powered SQL generation |
+| ✔ | SQL validation (read-only, single-statement enforcement) |
+| ✔ | SQL execution against PostgreSQL |
+| ✔ | Query history (auto-recorded on every successful execution) |
+| ✔ | Saved queries (independent of history) |
+| ✔ | Query result export (CSV and Excel) |
+| ✔ | OpenAPI / Swagger UI documentation |
 
 ### Planned
 
 | Area | Capability |
 |---|---|
-| ○ | SQL validation |
-| ○ | SQL execution |
-| ○ | Query history |
-| ○ | Dashboard |
-| ○ | Frontend |
+| ○ | Angular frontend |
 | ○ | Docker deployment |
 
 ---
@@ -63,8 +66,13 @@ QueryPilot's backend can currently:
 - Discover PostgreSQL database metadata (schemas, tables, columns, keys) at runtime.
 - Generate metadata-aware, structured prompts for SQL generation.
 - Generate SQL from natural language questions using Google Gemini.
-- Talk to LLM providers through a provider-neutral `LLMClient` abstraction, so adding or swapping a provider requires no changes to calling services.
-- Serve every capability through a consistent, JWT-secured REST API with a uniform response envelope.
+- Validate generated SQL, rejecting anything that is not a single, read-only `SELECT` statement.
+- Execute validated SQL against PostgreSQL and return typed results (columns, rows, row count, execution time).
+- Automatically record every successful execution in a per-user query history.
+- Let users save, rename, and delete queries for future reuse, independent of history.
+- Export a query's results as CSV or as an Excel (`.xlsx`) workbook.
+- Talk to LLM providers through a provider-neutral `LLMClient` abstraction, and to databases through a provider-neutral `DatabaseClient` abstraction, so adding or swapping either requires no changes to calling services.
+- Serve every capability through a consistent, JWT-secured REST API with a uniform response envelope, documented live via Swagger UI.
 
 ---
 
@@ -78,16 +86,18 @@ flowchart TD
     Prompt --> Metadata[Metadata Discovery]
     Metadata --> LLM[LLM Abstraction]
     LLM --> Gemini[Google Gemini]
-    Gemini --> SQL[Generated SQL]
-    SQL --> Validator["SQL Validation (Future)"]
-    Validator --> Execution["Database Execution (Future)"]
+    Gemini --> Validator[SQL Validation]
+    Validator --> Execution[SQL Execution]
+    Execution --> DB[(PostgreSQL)]
+    Execution --> History[Query History]
+    Execution --> Export["Export (CSV / Excel)"]
 ```
 
-Every stage through Generated SQL is implemented today; SQL Validation and Database Execution are the next milestones on the [roadmap](#development-roadmap) — see [Features](#features) for current status.
+Every stage above is implemented today. Query history is recorded automatically on every successful execution; export and saved queries are available as separate, independent capabilities built on the same execution pipeline.
 
 ---
 
-## AI Query Generation Pipeline
+## AI Query Generation & Execution Pipeline
 
 ```mermaid
 flowchart TD
@@ -96,11 +106,14 @@ flowchart TD
     Prompt --> LLM[LLM Abstraction]
     LLM --> Gemini[Google Gemini]
     Gemini --> SQL[Generated SQL]
-    SQL --> Validation["SQL Validation (Future)"]
-    Validation --> Execution["Execution (Future)"]
+    SQL --> Validation[SQL Validation]
+    Validation --> Execution[Database Execution]
+    Execution --> Response[Query Execution Response]
+    Response --> History[(Query History)]
+    Response --> Export["Export (CSV / Excel)"]
 ```
 
-A user's question is paired with live PostgreSQL metadata (schemas, tables, columns, keys) by the Prompt Engine, which assembles a structured, metadata-grounded prompt. That prompt is submitted through the provider-neutral `LLMClient` abstraction — implemented today by `GeminiClient` — and the SQL Google Gemini returns is handed back as-is. Nothing in this pipeline validates or executes the SQL yet.
+A user's question is paired with live PostgreSQL metadata (schemas, tables, columns, keys) by the Prompt Engine, which assembles a structured, metadata-grounded prompt. That prompt is submitted through the provider-neutral `LLMClient` abstraction — implemented today by `GeminiClient` — and the SQL Google Gemini returns is validated (single, read-only `SELECT` only) before it is ever executed. Execution goes through the provider-neutral `DatabaseClient` abstraction — implemented today by `PostgresDatabaseClient` — and every successful run is automatically recorded in query history. Results can additionally be exported as CSV or Excel on demand.
 
 ---
 
@@ -117,7 +130,7 @@ flowchart TD
 | Folder | Purpose |
 |---|---|
 | [`backend/`](backend/README.md) | Spring Boot backend — application code, configuration, and tests |
-| `frontend/` | Client application (not yet started) |
+| `frontend/` | Angular client application (not yet started) |
 | `docs/` | Project documentation — HLD, LLD, API reference, roadmap (added incrementally) |
 | `docker/` | Container and deployment configuration (not yet started) |
 
@@ -127,19 +140,21 @@ flowchart TD
 
 | Package | Responsibility |
 |---|---|
-| `client` | Outbound clients for external integrations — `LLMClient` / `GeminiClient`, `MetadataClient` / `PostgresMetadataClient` |
-| `config` | Spring configuration and `@ConfigurationProperties` (JWT, Gemini) |
+| `client` | Outbound clients for external integrations — `LLMClient` / `GeminiClient`, `MetadataClient` / `PostgresMetadataClient`, `DatabaseClient` / `PostgresDatabaseClient` |
+| `config` | Spring configuration and `@ConfigurationProperties` (JWT, Gemini, OpenAPI) |
 | `constant` | Centralized application, API, and security constants |
-| `controller` | REST controllers (`AuthController`, `MetadataController`, `PromptController`, `QueryController`) |
+| `controller` | REST controllers (`AuthController`, `MetadataController`, `PromptController`, `QueryController`, `QueryHistoryController`, `SavedQueryController`) |
 | `dto` | Request/response DTOs, kept provider- and layer-neutral |
 | `entity` | JPA entities |
 | `exception` | Custom exceptions and the global `@RestControllerAdvice` handler |
+| `export` | Plain, dependency-free CSV/Excel renderers (`CsvExporter`, `ExcelExporter`) — not Spring beans |
 | `mapper` | Entity ↔ DTO mapping |
 | `prompt` | Prompt construction logic for the Prompt Engine |
 | `repository` | Spring Data JPA repositories |
 | `security` | Spring Security configuration and the JWT filter chain |
 | `service` | Business logic interfaces and implementations |
 | `util` | Shared utilities |
+| `validator` | SQL validation (`SQLValidator` / `DefaultSQLValidator`) |
 
 See [`backend/README.md`](backend/README.md) for the backend's internal package layout, configuration, and run instructions.
 
@@ -155,6 +170,8 @@ See [`backend/README.md`](backend/README.md) for the backend's internal package 
 | Framework | Spring Boot |
 | Security | Spring Security |
 | Persistence | Spring Data JPA |
+| API Documentation | springdoc-openapi (Swagger UI) |
+| Spreadsheet Export | Apache POI |
 
 **Database**
 
@@ -188,31 +205,44 @@ See [`backend/README.md`](backend/README.md) for the backend's internal package 
 **Completed**
 
 - ✓ Sprint 1.1 – Foundation
-- ✓ Sprint 1.2 – Infrastructure
+- ✓ Sprint 1.2 – Infrastructure & Security
 - ✓ Sprint 1.3 – User Management
 - ✓ Sprint 1.4 – Authentication
 - ✓ Sprint 1.5 – JWT Authentication
 - ✓ Sprint 1.6 – Metadata Discovery
 - ✓ Sprint 1.7 – Prompt Engine
 - ✓ Sprint 1.8 – Gemini Integration
+- ✓ Sprint 1.9 – SQL Validation
+- ✓ Sprint 2.0 – SQL Execution
+- ✓ Sprint 2.1 – Query History
+- ✓ Sprint 2.2 – Saved Queries
+- ✓ Sprint 2.3 – Export Query Results
+- ✓ v2.4 RC – Backend Stabilization & OpenAPI Documentation
 
 **Upcoming**
 
-- Sprint 1.9 – SQL Validation
-- Sprint 2.0 – SQL Execution
-- Sprint 2.x – Query History
-- Sprint 2.x – Dashboard
-- Sprint 2.x – Frontend
-- Sprint 2.x – Deployment
+- Angular Frontend
+- Deployment (Docker)
 
 ---
 
 ## Project Status
 
-**Current version:** v1.8.0
-**Progress:** ~55% complete
+**Current version:** v2.4-RC (Release Candidate)
+**Progress:** Backend feature-complete for the initial release; frontend integration is next.
 
-The backend platform is largely complete: authentication, metadata discovery, prompt engineering, and AI-powered SQL generation are implemented and working end-to-end. The AI generation pipeline — Prompt Engine → LLM Abstraction → Google Gemini — is fully operational. SQL validation and SQL execution are the next major milestones, followed by query history, a dashboard, and a frontend.
+The backend platform is complete end-to-end: authentication, metadata discovery, AI-powered SQL generation, validation, execution, query history, saved queries, and result export are all implemented and working together behind a single, JWT-secured, OpenAPI-documented REST API. This release candidate focused on stabilization — API consistency, exception-handling review, DTO review, code cleanup, and Swagger documentation — in preparation for Angular frontend integration.
+
+---
+
+## API Documentation
+
+With the backend running, the full interactive API reference is available at:
+
+- Swagger UI: `http://localhost:8080/swagger-ui/index.html`
+- Raw OpenAPI document: `http://localhost:8080/v3/api-docs`
+
+Every endpoint except `/api/v1/auth/register` and `/api/v1/auth/login` requires a JWT bearer token — obtain one via `/api/v1/auth/login` and use Swagger UI's **Authorize** button to apply it to subsequent requests.
 
 ---
 
