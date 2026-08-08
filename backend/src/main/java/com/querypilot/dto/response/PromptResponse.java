@@ -7,8 +7,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * The structured prompt assembled by the Prompt Engine, ready to be sent to
- * an AI model by a future sprint. Contains no SQL — this response is never
- * anything more than prompt text.
+ * an LLM provider via {@link com.querypilot.client.LLMClient}. Contains no
+ * SQL — this response is never anything more than prompt text.
  */
 @Data
 @Builder

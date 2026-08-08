@@ -7,6 +7,8 @@ import com.querypilot.dto.response.ApiResponse;
 import com.querypilot.dto.response.QueryExecutionResponse;
 import com.querypilot.service.ExportService;
 import com.querypilot.service.QueryService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping(ApiConstants.API_BASE_PATH + "/query")
+@Tag(name = "Query", description = "Generates, validates, executes, and exports SQL for a natural language question.")
 public class QueryController {
 
     private final QueryService queryService;
@@ -36,12 +39,16 @@ public class QueryController {
     }
 
     @PostMapping("/generate")
+    @Operation(summary = "Generate, validate, and execute SQL for a natural language question",
+            description = "Runs the full pipeline — prompt assembly, SQL generation, validation, and execution — "
+                    + "and records the result in query history.")
     public ResponseEntity<ApiResponse<QueryExecutionResponse>> generate(@Valid @RequestBody QueryRequest request) {
         QueryExecutionResponse response = queryService.executeQuery(request);
         return ResponseEntity.ok(ApiResponse.success(ApplicationConstants.QUERY_EXECUTED_SUCCESS_MESSAGE, response));
     }
 
     @PostMapping("/export/csv")
+    @Operation(summary = "Generate, execute, and export a query's results as CSV")
     public ResponseEntity<Resource> exportCsv(@Valid @RequestBody QueryRequest request) {
         QueryExecutionResponse response = queryService.executeQuery(request);
         Resource file = exportService.exportToCsv(response);
@@ -53,6 +60,7 @@ public class QueryController {
     }
 
     @PostMapping("/export/excel")
+    @Operation(summary = "Generate, execute, and export a query's results as an Excel workbook")
     public ResponseEntity<Resource> exportExcel(@Valid @RequestBody QueryRequest request) {
         QueryExecutionResponse response = queryService.executeQuery(request);
         Resource file = exportService.exportToExcel(response);
