@@ -46,6 +46,10 @@ public final class ApplicationConstants {
     public static final String LLM_REQUEST_FAILED_MESSAGE = "The AI model request failed. Please try again later.";
     public static final String LLM_EMPTY_RESPONSE_MESSAGE = "The AI model returned an empty response. Please try again.";
 
+    // Query execution domain messages
+    public static final String QUERY_EXECUTED_SUCCESS_MESSAGE = "Query executed successfully.";
+    public static final String SQL_EXECUTION_FAILED_MESSAGE = "Failed to execute the query against the database. Please verify your request and try again.";
+
     // SQL validation messages
     public static final String SQL_EMPTY_MESSAGE = "Generated SQL is empty.";
     public static final String SQL_COMMENTS_NOT_ALLOWED_MESSAGE = "SQL comments are not allowed.";
