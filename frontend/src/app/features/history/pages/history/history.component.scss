@@ -39,6 +39,10 @@
 
   &__table {
     width: 100%;
+
+    .mat-mdc-row:hover {
+      background: var(--mat-sys-surface-container-highest);
+    }
   }
 
   &__question-cell {

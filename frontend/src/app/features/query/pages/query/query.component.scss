@@ -46,12 +46,34 @@
 
   &__table {
     width: 100%;
+
+    .mat-mdc-row:hover {
+      background: var(--mat-sys-surface-container-highest);
+    }
   }
 
   &__empty {
     margin: 0;
     padding: 16px 0;
     color: var(--mat-sys-on-surface-variant);
+  }
+
+  &__hint {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 40px 16px;
+    color: var(--mat-sys-on-surface-variant);
+    text-align: center;
+  }
+
+  &__hint-icon {
+    font-size: 32px;
+    width: 32px;
+    height: 32px;
+    opacity: 0.6;
   }
 
   &__actions {

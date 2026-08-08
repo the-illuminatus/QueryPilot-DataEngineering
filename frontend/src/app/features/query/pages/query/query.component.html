@@ -37,6 +37,13 @@
     </mat-card-content>
   </mat-card>
 
+  @if (!result() && !isGenerating()) {
+    <div class="qp-query__hint">
+      <mat-icon class="qp-query__hint-icon" aria-hidden="true">auto_awesome</mat-icon>
+      <p>Ask a question above to generate and run SQL against your database.</p>
+    </div>
+  }
+
   @if (result(); as data) {
     <mat-card class="qp-query__card" appearance="outlined">
       <mat-card-header>
