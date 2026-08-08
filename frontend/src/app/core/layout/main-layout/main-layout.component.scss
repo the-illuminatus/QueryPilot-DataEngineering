@@ -22,3 +22,9 @@
     padding: 24px;
   }
 }
+
+@media (max-width: 599px) {
+  .qp-shell__main {
+    padding: 16px;
+  }
+}
