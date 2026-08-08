@@ -10,8 +10,11 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
@@ -28,6 +31,8 @@ import java.util.List;
  */
 @Component
 public class GeminiClient implements LLMClient {
+
+    private static final Logger log = LoggerFactory.getLogger(GeminiClient.class);
 
     private final GeminiConfig geminiConfig;
     private final RestTemplate restTemplate;
@@ -59,9 +64,22 @@ public class GeminiClient implements LLMClient {
         try {
             return restTemplate.postForObject(buildUrl(), geminiRequest, GeminiGenerateContentResponse.class);
         } catch (ResourceAccessException ex) {
-            // Covers both connection failures and read-timeouts.
+            // Covers both connection failures and read-timeouts — the request
+            // never got an HTTP response at all.
+            log.error("Gemini request failed before an HTTP response was received (url={})", maskedUrl(), ex);
             throw new LLMException(ApplicationConstants.LLM_TIMEOUT_MESSAGE, ex);
+        } catch (HttpStatusCodeException ex) {
+            // Gemini returned a non-2xx HTTP response. Logs the exact status
+            // and response body server-side for diagnosis; the client only
+            // ever sees the generic LLMException message below.
+            log.error("Gemini request failed with HTTP {} (url={}). Response body: {}",
+                    ex.getStatusCode(), maskedUrl(), ex.getResponseBodyAsString());
+            throw new LLMException(ApplicationConstants.LLM_REQUEST_FAILED_MESSAGE, ex);
         } catch (RestClientException ex) {
+            // Any other failure that isn't a connectivity issue or an HTTP
+            // error status — e.g. response body didn't match the expected
+            // GeminiGenerateContentResponse shape.
+            log.error("Gemini request failed (url={})", maskedUrl(), ex);
             throw new LLMException(ApplicationConstants.LLM_REQUEST_FAILED_MESSAGE, ex);
         }
     }
@@ -69,6 +87,11 @@ public class GeminiClient implements LLMClient {
     private String buildUrl() {
         return geminiConfig.getEndpoint() + "/" + geminiConfig.getModel()
                 + ":generateContent?key=" + geminiConfig.getApiKey();
+    }
+
+    /** {@link #buildUrl()} with the API key redacted, safe to write to logs. */
+    private String maskedUrl() {
+        return buildUrl().replace(geminiConfig.getApiKey(), "******");
     }
 
     private String extractText(GeminiGenerateContentResponse response) {
