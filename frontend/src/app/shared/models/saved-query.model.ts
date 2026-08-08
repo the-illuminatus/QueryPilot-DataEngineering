@@ -5,6 +5,11 @@ export interface CreateSavedQueryRequest {
   generatedSql: string;
 }
 
+/** Payload for `PUT /api/v1/saved-queries/{id}` — renames only, no other field is editable. */
+export interface UpdateSavedQueryRequest {
+  title: string;
+}
+
 /** Public-facing representation of a saved query. */
 export interface SavedQueryResponse {
   id: number;
