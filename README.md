@@ -384,17 +384,17 @@ Every endpoint except `/api/v1/auth/register` and `/api/v1/auth/login` requires 
 
 ## Login
 
-<img width="1918" height="1032" alt="NL2SQL_login" src="https://github.com/user-attachments/assets/713b7f9e-05bf-49e2-994e-370ce5bd1082" />
+<img width="1918" height="962" alt="NL2SQL_login" src="https://github.com/user-attachments/assets/dc611a18-534c-45f2-b869-6a4ae17aaac1" />
 
 
 ## Dashboard
 
-<img width="1918" height="1032" alt="NL2SQL_dashboard" src="https://github.com/user-attachments/assets/19af026b-3654-4f80-a2c6-16c0dca9ce74" />
+<img width="1918" height="962" alt="NL2SQL_dashboard" src="https://github.com/user-attachments/assets/dff8676a-be56-4be1-aedc-4b2b0ca4a061" />
 
 
 ## Query Generation
 
-<img width="1918" height="1030" alt="NL2SQL_query_generation" src="https://github.com/user-attachments/assets/e45dc300-bca7-4ddb-8ceb-b1a63d3e2616" />
+<img width="1918" height="965" alt="NL2SQL_query_generation" src="https://github.com/user-attachments/assets/0f49a49c-969b-40d7-8947-0ad2cd9ce4de" />
 
 
 ## Results
@@ -404,17 +404,17 @@ Every endpoint except `/api/v1/auth/register` and `/api/v1/auth/login` requires 
 
 ## History
 
-<img width="1918" height="1026" alt="NL2SQL_history" src="https://github.com/user-attachments/assets/8c503f52-006e-49e6-8a22-e1ca153a0330" />
+<img width="1918" height="960" alt="NL2SQL_history" src="https://github.com/user-attachments/assets/1b72bafe-c59c-4b26-88c3-ae3d23bedb55" />
 
 
 ## Saved Queries
 
-<img width="1918" height="1022" alt="NL2SQL_Saved_Queries" src="https://github.com/user-attachments/assets/b8bd4397-23d7-4a42-aa83-ff0bfa368f28" />
+<img width="1918" height="966" alt="NL2SQL_Saved_Queries" src="https://github.com/user-attachments/assets/6dcc3557-159b-4b89-a2df-e5c17c3ff1b7" />
 
 
 ## Profile
 
-<img width="1918" height="1028" alt="NL2SQL_profile" src="https://github.com/user-attachments/assets/636cc372-ff6c-4abf-a9b8-a15fe74016e6" />
+<img width="1918" height="966" alt="NL2SQL_profile" src="https://github.com/user-attachments/assets/a44d8831-9838-4907-a281-b2d787759b2d" />
 
 
 ---
