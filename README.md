@@ -304,6 +304,26 @@ See [`backend/README.md`](backend/README.md) for the backend's internal package 
 
 ---
 
+## 🏗️ System Architecture
+
+```mermaid
+flowchart TB
+
+    UI["Angular 19<br/>(Angular Material)"]
+
+    API["Spring Boot 3.2<br/>Authentication • JWT • REST APIs<br/>AI Orchestration"]
+
+    GEMINI["Google Gemini API<br/>Natural Language → SQL"]
+
+    DB[("PostgreSQL 17<br/>Query Execution Database")]
+
+    UI -->|"REST APIs"| API
+    API -->|"Generate SQL"| GEMINI
+    API -->|"Execute SQL"| DB
+```
+
+---
+
 ## Development Roadmap
 
 **Completed**
