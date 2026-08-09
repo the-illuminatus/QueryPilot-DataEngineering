@@ -364,31 +364,38 @@ Every endpoint except `/api/v1/auth/register` and `/api/v1/auth/login` requires 
 
 ## Login
 
-(Add Screenshot)
+<img width="1918" height="1032" alt="NL2SQL_login" src="https://github.com/user-attachments/assets/713b7f9e-05bf-49e2-994e-370ce5bd1082" />
+
 
 ## Dashboard
 
-(Add Screenshot)
+<img width="1918" height="1032" alt="NL2SQL_dashboard" src="https://github.com/user-attachments/assets/19af026b-3654-4f80-a2c6-16c0dca9ce74" />
+
 
 ## Query Generation
 
-(Add Screenshot)
+<img width="1918" height="1030" alt="NL2SQL_query_generation" src="https://github.com/user-attachments/assets/e45dc300-bca7-4ddb-8ceb-b1a63d3e2616" />
+
 
 ## Results
 
-(Add Screenshot)
+<img width="1917" height="857" alt="NL2SQL_results" src="https://github.com/user-attachments/assets/b4d45db4-b01e-494d-bf53-07ddcce944fc" />
+
 
 ## History
 
-(Add Screenshot)
+<img width="1918" height="1026" alt="NL2SQL_history" src="https://github.com/user-attachments/assets/8c503f52-006e-49e6-8a22-e1ca153a0330" />
+
 
 ## Saved Queries
 
-(Add Screenshot)
+<img width="1918" height="1022" alt="NL2SQL_Saved_Queries" src="https://github.com/user-attachments/assets/b8bd4397-23d7-4a42-aa83-ff0bfa368f28" />
+
 
 ## Profile
 
-(Add Screenshot)
+<img width="1918" height="1028" alt="NL2SQL_profile" src="https://github.com/user-attachments/assets/636cc372-ff6c-4abf-a9b8-a15fe74016e6" />
+
 
 ---
 
