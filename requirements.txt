@@ -1,0 +1,17 @@
+pandas>=2.2
+pyarrow>=16.0
+SQLAlchemy>=2.0
+psycopg2-binary>=2.9
+python-dotenv>=1.0
+pytest>=8.0
+streamlit>=1.35
+
+# SQLAlchemy pulls this in transitively. Pinned below 3.2.5 because that
+# release has no prebuilt Windows/cp39 wheel, which forces a source build
+# requiring the MSVC C++ toolchain. 3.2.4 has wheels for all supported
+# platforms and satisfies SQLAlchemy's requirement.
+greenlet<3.2.5
+
+# Optional -- not required by any current pipeline stage.
+# Uncomment if a later phase adds direct SQL-over-Parquet querying.
+# duckdb>=1.0

@@ -1,0 +1,6 @@
+# Dependencies needed only to regenerate the synthetic raw dataset
+# (scripts/generate_dataset.py). NOT required by the ingestion pipeline
+# or any other runtime code -- kept separate from requirements.txt on
+# purpose so the pipeline's real dependency footprint stays honest.
+
+Faker>=24.0

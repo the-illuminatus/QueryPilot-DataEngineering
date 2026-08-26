@@ -1,13 +1,21 @@
-# Maven
-target/
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# Environment / secrets
+.env
 
 # IDE
 .idea/
-*.iml
 .vscode/
 .settings/
-.classpath
-.project
 
 # OS
 .DS_Store
@@ -16,5 +24,24 @@ Thumbs.db
 # Logs
 *.log
 
-# Environment
-.env
+# Data
+# data/raw/_incoming/ holds the small, seeded source-system extracts --
+# tracked so the repo is runnable/inspectable without regenerating them.
+# Everything else under data/ is pipeline output (ingested batches, run
+# manifests, curated, rejected) and is intentionally not tracked.
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/_incoming/
+!data/raw/_incoming/**
+
+data/curated/*
+!data/curated/.gitkeep
+
+data/rejected/*
+!data/rejected/.gitkeep
+
+data/validated/*
+!data/validated/.gitkeep
+
+data/warehouse/*
+!data/warehouse/.gitkeep
