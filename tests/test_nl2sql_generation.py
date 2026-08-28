@@ -9,7 +9,7 @@ selection/factory tests and tests/test_nl2sql_provider_*.py for each
 concrete provider's own request-building tests.
 """
 
-from src.nl2sql.generation import generate_sql, get_configuration_error
+from src.nl2sql.generation import MAX_QUESTION_LENGTH, generate_sql, get_configuration_error, validate_question_length
 from src.nl2sql.providers.base import ProviderConfigurationError, SQLGenerationProvider, SQLGenerationResult
 
 SCHEMA_CONTEXT = "Table: orders\n  - order_id: VARCHAR(20)  [PK, NOT NULL]"
@@ -77,6 +77,44 @@ def test_get_configuration_error_surfaces_a_safe_message_when_not_ready(monkeypa
     error = get_configuration_error()
 
     assert error == "GEMINI_API_KEY is not set."
+
+
+# ---------------------------------------------------------------------------
+# Phase 7H: maximum question length (checked before generate_sql() is ever
+# called -- see dashboard/nl2sql_ui.py, which is the only current caller
+# of this guard).
+# ---------------------------------------------------------------------------
+
+
+def test_question_under_the_limit_is_accepted():
+    assert validate_question_length("How many successful payments were made?") is None
+
+
+def test_question_exactly_at_the_limit_is_accepted():
+    question = "a" * MAX_QUESTION_LENGTH
+    assert validate_question_length(question) is None
+
+
+def test_question_one_over_the_limit_is_rejected():
+    question = "a" * (MAX_QUESTION_LENGTH + 1)
+    assert validate_question_length(question) is not None
+
+
+def test_question_well_over_the_limit_is_rejected():
+    question = "a" * (MAX_QUESTION_LENGTH * 10)
+    assert validate_question_length(question) is not None
+
+
+def test_rejection_message_is_clear_and_mentions_the_limit():
+    question = "a" * (MAX_QUESTION_LENGTH + 1)
+    message = validate_question_length(question)
+    assert str(MAX_QUESTION_LENGTH) in message
+    assert "too long" in message.lower()
+
+
+def test_max_question_length_is_a_single_well_defined_constant():
+    assert isinstance(MAX_QUESTION_LENGTH, int)
+    assert MAX_QUESTION_LENGTH > 0
 
 
 def test_get_configuration_error_never_raises_for_other_provider_errors(monkeypatch):
