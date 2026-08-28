@@ -6,6 +6,24 @@ python-dotenv>=1.0
 pytest>=8.0
 streamlit>=1.35
 
+# NL2SQL LLM generation layer (src/nl2sql/generation.py + providers/).
+# anthropic is only required if NL2SQL_PROVIDER=anthropic (the default,
+# for backward compatibility) -- gemini/ollama/openrouter use `requests`
+# below instead, so none of them need their own SDK.
+anthropic>=0.40
+pydantic>=2.0
+
+# NL2SQL providers/gemini.py, providers/ollama.py, providers/openrouter.py
+# talk to those APIs directly over plain HTTP (each is one JSON POST) --
+# not worth a dedicated SDK per provider. Already pulled in transitively
+# (e.g. by anthropic's own HTTP stack); pinned explicitly here because
+# these three providers import it directly.
+requests>=2.31
+
+# NL2SQL SQL validation / safety gate (src/nl2sql/validation.py) --
+# parses candidate SQL into an AST rather than trusting keyword regexes.
+sqlglot>=25.0
+
 # SQLAlchemy pulls this in transitively. Pinned below 3.2.5 because that
 # release has no prebuilt Windows/cp39 wheel, which forces a source build
 # requiring the MSVC C++ toolchain. 3.2.4 has wheels for all supported
