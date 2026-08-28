@@ -58,6 +58,11 @@ def top_customers(_engine: Engine) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=_CACHE_TTL_SECONDS)
+def revenue_by_state(_engine: Engine) -> pd.DataFrame:
+    return _run(_engine, ANALYTICS_DIR / "11_revenue_by_state.sql")
+
+
+@st.cache_data(ttl=_CACHE_TTL_SECONDS)
 def average_order_value(_engine: Engine) -> dict:
     df = _run(_engine, ANALYTICS_DIR / "05_average_order_value.sql")
     row = df.iloc[0]
@@ -102,6 +107,16 @@ def reconciliation_mismatches(_engine: Engine) -> pd.DataFrame:
 @st.cache_data(ttl=_CACHE_TTL_SECONDS)
 def pipeline_batches(_engine: Engine) -> pd.DataFrame:
     return _run(_engine, DASHBOARD_QUERIES_DIR / "pipeline_batches_summary.sql")
+
+
+@st.cache_data(ttl=_CACHE_TTL_SECONDS)
+def data_freshness(_engine: Engine) -> dict:
+    df = _run(_engine, DASHBOARD_QUERIES_DIR / "data_freshness.sql")
+    row = df.iloc[0]
+    return {
+        "latest_order_date": row["latest_order_date"],
+        "latest_payment_date": row["latest_payment_date"],
+    }
 
 
 def successful_payment_rate(engine: Engine) -> float:

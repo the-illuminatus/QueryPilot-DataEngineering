@@ -47,9 +47,9 @@ def _invalid(errors=("rejected",)) -> SQLValidationResult:
 def _fixture_batch():
     customers = pd.DataFrame(
         [
-            {"customer_id": "EC1", "full_name": "Alice", "email": "alice@x.com", "city": "X", "country": "US",
+            {"customer_id": "EC1", "full_name": "Alice", "email": "alice@x.com", "city": "Pune", "state": "Maharashtra",
              "signup_date": pd.Timestamp("2024-01-01")},
-            {"customer_id": "EC2", "full_name": "Bob", "email": "bob@x.com", "city": "Y", "country": "US",
+            {"customer_id": "EC2", "full_name": "Bob", "email": "bob@x.com", "city": "Delhi", "state": "Delhi",
              "signup_date": pd.Timestamp("2024-01-02")},
         ]
     )

@@ -1,8 +1,9 @@
 # QueryPilot Data Engineering
 
-A standalone, portfolio-focused Data Engineering pipeline. This project is
-independent of any prior application it may have originated from — no
-Spring Boot/Angular, no auth. It does include a read-only analytics
+A standalone, portfolio-focused Data Engineering pipeline for an
+**India-focused digital-commerce and payments analytics warehouse**. This
+project is independent of any prior application it may have originated
+from — no Spring Boot/Angular, no auth. It includes a read-only analytics
 dashboard (Phase 6) and a schema-aware, multi-provider NL2SQL layer
 (Phase 7), both built directly on top of the pipeline and warehouse below
 rather than as a separate application.
@@ -13,6 +14,14 @@ Demonstrate practical, credible Data Engineering fundamentals end to end:
 ingesting raw data, validating and cleaning it, transforming it into a
 curated dataset, loading it into an analytical store, and querying it with
 SQL — without introducing infrastructure the project doesn't need.
+
+The business domain is a synthetic Indian e-commerce marketplace:
+customers across Indian cities and states, an INR-priced product
+catalogue, orders, order line items, and payments (UPI-led, alongside
+cards, net-banking, wallets and COD). **All monetary values are Indian
+rupees (INR).** The data is generated locally with recent timestamps so
+the warehouse reads as an operational store — it is synthetic and
+reproducible, **not** a live or real-time feed.
 
 ## Target Architecture
 
@@ -45,7 +54,7 @@ Dashboard (read-only consumption layer)
 | DB access            | SQLAlchemy / psycopg2      |
 | Configuration        | Environment variables (`.env`) |
 | Testing              | pytest                     |
-| Dashboard            | Streamlit                  |
+| Dashboard            | Streamlit (Altair charts, bundled) |
 | NL2SQL LLM provider  | Provider-agnostic (Anthropic / Gemini / Ollama / OpenRouter) |
 | SQL safety gate      | sqlglot (AST-based validation) |
 
@@ -59,9 +68,10 @@ useful — it is not a current dependency.
 removed; clean Python project structure; environment-variable-driven
 configuration; pytest infrastructure.
 
-**Phase 2 — Dataset contract & ingestion:** synthetic, seeded e-commerce
-dataset generator; ingestion pipeline lands immutable, batch-partitioned
-raw data.
+**Phase 2 — Dataset contract & ingestion:** synthetic, seeded India
+e-commerce dataset generator (INR pricing, Indian names/cities/states,
+UPI-led payment mix, recent order dates); ingestion pipeline lands
+immutable, batch-partitioned raw data.
 
 **Phase 3 — Data quality / validation:** entity-level, referential, and
 temporal validation rules; rejected rows and a JSON quality report written
@@ -91,17 +101,34 @@ this project's size).
 
 ## Dataset & Ingestion (Phase 2)
 
-**Domain:** a small e-commerce dataset with five related entities —
-`customers`, `products`, `orders`, `order_items`, `payments` — chosen
-because it gives the pipeline real relational integrity, enums, and
+**Domain:** a synthetic Indian e-commerce marketplace with five related
+entities — `customers`, `products`, `orders`, `order_items`, `payments` —
+chosen because it gives the pipeline real relational integrity, enums, and
 numeric/date rules to validate in later phases.
 
+**India localization:** customers have Indian names, a `city`, and a
+`state` (an Indian state or union territory); the product catalogue uses
+plausible Indian retail brands/items across marketplace categories
+(Grocery, Fashion, Electronics, Smartphones, Mobile Accessories,
+Appliances, …), each with its own realistic INR price band; all prices and
+amounts are in **INR** with realistic per-category ranges; `payment_method`
+is UPI-dominant alongside `CREDIT_CARD` / `DEBIT_CARD` / `NET_BANKING` /
+`WALLET` / `COD`.
+
 **Why synthetic data:** a public dataset rarely maps cleanly onto exactly
-these five entities and gives no control over data-quality scenarios. This
-project instead generates a synthetic dataset with `Faker`, using a fixed
-random seed — running the generator twice produces byte-identical output,
-so the dataset is fully reproducible without checking large files into
-Git.
+these five entities and gives no control over data-quality scenarios. The
+generator (`scripts/generate_dataset.py`) is fully deterministic — a
+single seeded `random.Random`, and every date drawn from a fixed
+reference window rather than the wall clock — so running it twice on any
+machine on any day produces byte-identical output, and the dataset stays
+reproducible without checking large files into Git. It has **no runtime
+dependencies** (no Faker); order dates are skewed toward the recent past
+so the warehouse looks operational, but they are fixed constants, not
+`datetime.now()`.
+
+**"Recent" but not real-time:** the dataset is static synthetic data with
+recent-looking timestamps. It is never presented as a live feed, and no
+external/third-party data source is called.
 
 **Controlled bad-data injection:** ~4% of rows per entity are deliberately
 corrupted — missing required fields, duplicate primary keys, invalid
@@ -120,8 +147,7 @@ is pipeline output and is gitignored.
 committed):
 
 ```bash
-pip install -r requirements-dev.txt   # Faker; generation-time only
-python scripts/generate_dataset.py
+python scripts/generate_dataset.py    # no extra dependencies
 ```
 
 **Running ingestion:**
@@ -199,17 +225,22 @@ partway through, the whole transaction rolls back — no batch is ever left
 partially loaded — and a `FAILED` row is recorded separately so the
 failure is visible and the batch can be retried.
 
-**Analytical SQL** lives in `sql/analytics/` — ten read-only queries
-(total revenue, revenue by month/category, top customers, average order
-value, order/payment status and payment-method distributions, and the
-order-reconciliation rate plus a drill-down into specific mismatches) that
-run directly against the warehouse tables.
+**Analytical SQL** lives in `sql/analytics/` — eleven read-only queries
+(total revenue, revenue by month/category/state, top customers, average
+order value, order/payment status and payment-method distributions, and
+the order-reconciliation rate plus a drill-down into specific mismatches)
+that run directly against the warehouse tables. All revenue figures are
+INR.
 
 ## Dashboard (Phase 6)
 
 A read-only Streamlit dashboard consuming the warehouse and its analytical
-SQL — the presentation layer over everything above it. It never writes to
-PostgreSQL and never re-runs any pipeline stage itself.
+SQL — the presentation layer over everything above it, styled as an
+"India Payments & Commerce Analytics" product. It never writes to
+PostgreSQL and never re-runs any pipeline stage itself. Charts are built
+with Altair (which already ships with Streamlit — no added dependency);
+all monetary values are shown in INR with Indian lakh/crore formatting
+(`dashboard/format.py`).
 
 **Run it:**
 
@@ -220,16 +251,22 @@ streamlit run dashboard/app.py
 Needs the same `.env` PostgreSQL configuration as the warehouse loader,
 and at least one successfully loaded batch.
 
-**Sections:** header with data-lineage indicator; executive KPIs (total
-revenue, total orders, average order value, successful payment rate,
-reconciliation rate); revenue analytics (by month, by category); top
-customers; order analytics (status distribution, reconciliation rate);
-payment analytics (status and method distributions); data-quality /
-pipeline health (a batch selector over `pipeline_batches`, with the
-matching validation quality report read directly from
-`data/rejected/batch_id=.../quality_report.json` when present — reusing
-that file rather than re-implementing validation); and a reconciliation
-mismatches table, largest discrepancy first.
+**Layout:** a header with the "data as of" date and a data-lineage
+indicator, then six tabs:
+
+- **Overview** — KPI band (collected revenue, orders, average order
+  value, payment success rate, reconciliation rate), revenue trend by
+  month, revenue by category.
+- **Revenue** — revenue by customer state, plus a monthly detail table.
+- **Customers** — top customers by collected revenue.
+- **Orders & Payments** — order-status distribution, payment-method mix
+  (UPI-led), payment-status distribution.
+- **Data Quality** — a batch selector over `pipeline_batches` with that
+  load's row counts and its validation quality report (read directly from
+  `data/rejected/batch_id=.../quality_report.json` when present — reusing
+  that file rather than re-implementing validation), and a reconciliation
+  mismatches table, largest discrepancy first.
+- **Ask QueryPilot** — the NL2SQL section (below).
 
 **On the batch selector — an important limitation, stated plainly rather
 than hidden:** the warehouse tables are current-state (Type 1) — they
@@ -329,14 +366,16 @@ documents every variable above with no real values filled in.
 │       └── providers/            # anthropic / gemini / ollama / openrouter adapters
 ├── sql/
 │   ├── ddl/                    # warehouse table definitions (applied idempotently by the loader)
-│   └── analytics/               # 10 read-only analytical queries
-│       └── dashboard/            # dashboard-only queries (e.g. batch history)
+│   └── analytics/               # 11 read-only analytical queries
+│       └── dashboard/            # dashboard-only queries (batch history, freshness)
 ├── dashboard/
-│   ├── app.py                    # Streamlit entrypoint / page layout
+│   ├── app.py                    # Streamlit entrypoint / tabbed page layout
 │   ├── queries.py                 # reads + executes sql/analytics/*.sql, Streamlit-cached
 │   ├── db.py                       # cached, read-only-enforced PostgreSQL engine
-│   ├── components.py                # KPI cards, formatting, small shared UI pieces
-│   └── nl2sql_ui.py                  # "Ask QueryPilot" section -- orchestrates src/nl2sql only
+│   ├── format.py                    # INR (₹, lakh/crore) + number formatting, pure
+│   ├── charts.py                     # Altair chart builders, shared palette
+│   ├── components.py                  # theme CSS, KPI cards, section headers
+│   └── nl2sql_ui.py                    # "Ask QueryPilot" section -- orchestrates src/nl2sql only
 ├── tests/                       # pytest suite (unit + real-database integration tests)
 ├── config/
 │   └── settings.py              # environment-driven configuration

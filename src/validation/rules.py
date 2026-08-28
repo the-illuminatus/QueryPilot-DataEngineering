@@ -41,7 +41,7 @@ def validate_customers(df: pd.DataFrame) -> dict:
     c.flag(is_blank(df["customer_id"]), "MISSING_CUSTOMER_ID", "customer_id is required")
     c.flag(is_blank(df["full_name"]), "MISSING_FULL_NAME", "full_name is required")
     c.flag(is_blank(df["city"]), "MISSING_CITY", "city is required")
-    c.flag(is_blank(df["country"]), "MISSING_COUNTRY", "country is required")
+    c.flag(is_blank(df["state"]), "MISSING_STATE", "state is required")
     c.flag(duplicated_nonblank(df["customer_id"]), "DUPLICATE_CUSTOMER_ID", "duplicate customer_id")
 
     email_blank = is_blank(df["email"])

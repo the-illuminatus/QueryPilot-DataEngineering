@@ -33,8 +33,8 @@ def _customer(**overrides):
         "customer_id": "C1",
         "full_name": "Alice",
         "email": "alice@example.com",
-        "city": "Springfield",
-        "country": "USA",
+        "city": "Pune",
+        "state": "Maharashtra",
         "signup_date": "2024-01-01",
     }
     row.update(overrides)

@@ -25,7 +25,7 @@ def _typed_fixture_batch():
     dtypes matter here since these go straight to psycopg2 parameter
     binding."""
     customers = pd.DataFrame(
-        [{"customer_id": "TC1", "full_name": "Alice", "email": "alice@x.com", "city": "X", "country": "Y",
+        [{"customer_id": "TC1", "full_name": "Alice", "email": "alice@x.com", "city": "Pune", "state": "Maharashtra",
           "signup_date": pd.Timestamp("2024-01-01")}]
     )
     products = pd.DataFrame(

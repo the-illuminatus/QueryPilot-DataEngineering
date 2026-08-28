@@ -54,7 +54,7 @@ def test_customers_columns_discovered_with_types(engine):
 
     column_names = {c.name for c in customers.columns}
     assert column_names == {
-        "customer_id", "full_name", "email", "city", "country", "signup_date", "batch_id",
+        "customer_id", "full_name", "email", "city", "state", "signup_date", "batch_id",
     }
 
     customer_id = customers.column("customer_id")
@@ -151,7 +151,8 @@ def test_schema_context_includes_known_relationships_and_descriptions(engine):
 
     assert "orders.customer_id -> customers.customer_id" in context
     assert "order_items.order_id -> orders.order_id" in context
-    # Descriptions sourced from the DDL header comments (see descriptions.py).
+    # Table descriptions come from descriptions.py (DDL header comments +
+    # documented domain); the orders one mentions reconciliation.
     assert "reconciliation" in context.lower()
     assert "pipeline_batches" in context
 

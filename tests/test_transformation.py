@@ -57,8 +57,8 @@ def test_date_conversion():
                 "customer_id": "C1",
                 "full_name": "Alice",
                 "email": "a@x.com",
-                "city": "X",
-                "country": "Y",
+                "city": "Pune",
+                "state": "Maharashtra",
                 "signup_date": "2024-01-01",
             }
         ],
@@ -186,8 +186,8 @@ def _small_fixture_batch():
                 "customer_id": "C1",
                 "full_name": "Alice",
                 "email": "alice@x.com",
-                "city": "X",
-                "country": "Y",
+                "city": "Pune",
+                "state": "Maharashtra",
                 "signup_date": "2024-01-01",
             }
         ],

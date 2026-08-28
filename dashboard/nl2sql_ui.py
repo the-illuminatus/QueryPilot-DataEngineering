@@ -98,11 +98,12 @@ def _check_and_record_throttle(session_state: MutableMapping, now: float) -> Opt
     return None
 
 EXAMPLE_QUESTIONS = (
-    "How many successful payments were made?",
-    "What are the top 10 customers by revenue?",
-    "Show monthly revenue for 2026.",
-    "Which product categories generated the most revenue?",
-    "How many orders are unreconciled?",
+    "Which states generate the most collected revenue?",
+    "What are the top 10 customers by total successful payment amount?",
+    "Show monthly collected revenue for 2026.",
+    "Which product categories sell the most?",
+    "How many payments were made using UPI?",
+    "How many orders failed reconciliation?",
 )
 
 # Stages an AskResult can end in. Only "success" has rows to show; every
@@ -238,27 +239,28 @@ def _render_result(result: AskResult) -> None:
 
     # _STAGE_SUCCESS
     execution = result.execution
-    st.subheader("Result")
+    st.markdown("##### Result")
     if execution.row_count == 0:
-        st.info("No results found.")
+        st.info("The query ran successfully but returned no rows.")
     else:
         st.dataframe(pd.DataFrame(list(execution.rows)), width="stretch", hide_index=True)
-        caption = f"{execution.row_count} row(s)"
+        caption = f"{execution.row_count} row(s) · monetary columns are in INR"
         if execution.truncated:
-            caption += f" (truncated to the first {execution.row_count} -- more rows were available)"
+            caption += f" · truncated to the first {execution.row_count}, more were available"
         st.caption(caption)
 
-    st.divider()
-    st.markdown("**Generated SQL**")
-    with st.expander("View SQL"):
+    st.write("")
+    explanation_col, tables_col = st.columns([3, 1])
+    with explanation_col:
+        st.markdown("**Explanation**")
+        st.write(result.generation.explanation or "—")
+    with tables_col:
+        st.markdown("**Tables used**")
+        tables = result.validation.referenced_tables or result.generation.tables_used
+        st.write(", ".join(tables) if tables else "—")
+
+    with st.expander("Generated SQL (validated, executed read-only)"):
         st.code(result.validation.normalized_sql, language="sql")
-
-    st.markdown("**Explanation**")
-    st.write(result.generation.explanation or "—")
-
-    st.markdown("**Tables Used**")
-    tables = result.validation.referenced_tables or result.generation.tables_used
-    st.write(", ".join(tables) if tables else "—")
 
 
 def render_ask_querypilot(engine: Engine) -> None:
@@ -266,7 +268,11 @@ def render_ask_querypilot(engine: Engine) -> None:
     existing read-only engine (dashboard/db.py) -- passed in rather than
     fetched here, so this module never opens its own connection."""
     st.subheader("Ask QueryPilot")
-    st.caption("Ask a question about the warehouse in plain English.")
+    st.caption(
+        "Ask a question about the commerce and payments data in plain English. "
+        "QueryPilot writes the SQL, checks it is read-only, runs it against the warehouse, "
+        "and shows you the result alongside the query it used."
+    )
 
     configuration_error = get_configuration_error()
     if configuration_error is not None:
@@ -283,10 +289,10 @@ def render_ask_querypilot(engine: Engine) -> None:
     with st.form("ask_querypilot_form"):
         question = st.text_input(
             "Natural-language question",
-            placeholder="e.g. Which product category generated the most revenue?",
+            placeholder="e.g. Which states generate the most collected revenue?",
             label_visibility="collapsed",
         )
-        submitted = st.form_submit_button("Generate & Run Query")
+        submitted = st.form_submit_button("Generate & run query")
 
     # Only an actual form submission runs the pipeline -- a rerun caused
     # by interacting with any other widget on the page (e.g. the batch
