@@ -10,7 +10,7 @@ import pytest
 import requests
 
 from src.nl2sql.providers.base import ProviderConfigurationError, ProviderRequestError
-from src.nl2sql.providers.gemini import DEFAULT_MODEL, GeminiProvider
+from src.nl2sql.providers.gemini import _TIMEOUT_SECONDS, DEFAULT_MODEL, GeminiProvider
 
 SCHEMA_CONTEXT = "Table: orders\n  - order_id: VARCHAR(20)  [PK, NOT NULL]"
 
@@ -105,6 +105,21 @@ def test_generate_requests_json_structured_output():
     gen_config = session.last_call["json"]["generationConfig"]
     assert gen_config["responseMimeType"] == "application/json"
     assert "responseSchema" in gen_config
+
+
+def test_timeout_is_generous_enough_for_real_structured_output_latency():
+    """Regression guard: a live diagnostic measured a real, successful
+    structured-output generateContent call against gemini-flash-latest
+    taking ~81s. A too-short timeout aborts an otherwise-successful
+    request -- assert the configured timeout leaves real headroom above
+    that measurement, not just "some positive number"."""
+    session = _FakeSession(_FakeResponse(_gemini_envelope()))
+    provider = GeminiProvider(api_key="fake-key", session=session)
+
+    provider.generate("q", SCHEMA_CONTEXT)
+
+    assert session.last_call["timeout"] == _TIMEOUT_SECONDS
+    assert _TIMEOUT_SECONDS >= 60
 
 
 def test_uses_default_model_unless_overridden():
