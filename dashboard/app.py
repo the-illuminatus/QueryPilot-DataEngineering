@@ -40,8 +40,8 @@ from dashboard.components import (
     empty_state,
     inject_theme,
     kpi_row,
-    lineage_badge,
     page_header,
+    page_meta,
     section_header,
 )
 from dashboard.db import get_engine
@@ -83,57 +83,54 @@ def _safe(label: str, func, *args, **kwargs):
         return None
 
 
-def _render_overview(engine, revenue, aov, payment_rate, reconciliation) -> None:
-    section_header("Key metrics", "Current warehouse state · all amounts in INR")
-    if None not in (revenue, aov, payment_rate, reconciliation):
+def _render_overview(engine, revenue, aov, payment_rate) -> None:
+    monthly = _safe("revenue by month", queries.revenue_by_month, engine)
+
+    section_header("Business summary", "Current state of the warehouse — all amounts in INR.")
+    if None not in (revenue, aov, payment_rate):
+        spark = (
+            monthly["revenue"].tail(12).astype(float).tolist()
+            if monthly is not None and len(monthly) >= 2
+            else None
+        )
         kpi_row(
             [
-                ("Collected revenue", format_inr_compact(revenue), "Sum of successful payments (INR)"),
-                ("Orders", format_count(aov["order_count"]), None),
-                ("Average order value", format_inr_compact(aov["average_order_value"]), None),
+                ("Collected revenue", format_inr_compact(revenue), "Sum of successful payments (INR)", spark),
+                ("Orders", format_count(aov["order_count"]), "Orders in the warehouse"),
+                ("Average order value", format_inr_compact(aov["average_order_value"]), "Mean recorded order total"),
                 ("Payment success rate", format_percent(payment_rate), "Share of payments with status SUCCESS"),
-                (
-                    "Reconciliation rate",
-                    format_percent(reconciliation["reconciliation_rate_pct"]),
-                    "Share of orders whose recorded total matches the sum of their order_items",
-                ),
             ]
         )
 
-    st.write("")
-    left, right = st.columns([3, 2])
-    with left:
-        section_header("Revenue trend", "Collected INR revenue by month")
-        monthly = _safe("revenue by month", queries.revenue_by_month, engine)
-        if monthly is not None:
-            if monthly.empty:
-                empty_state("No revenue recorded yet.")
-            else:
-                st.altair_chart(charts.revenue_trend(monthly), use_container_width=True)
-    with right:
-        section_header("Revenue by category", "Kept revenue, cancelled/returned excluded")
-        by_category = _safe("revenue by category", queries.revenue_by_category, engine)
-        if by_category is not None:
-            if by_category.empty:
-                empty_state("No category revenue yet.")
-            else:
-                st.altair_chart(
-                    charts.magnitude_bar(by_category, category="category", value="revenue", height=300),
-                    use_container_width=True,
-                )
+    section_header("Revenue trend", "Collected INR revenue by month.")
+    if monthly is not None:
+        if monthly.empty:
+            empty_state("No revenue recorded yet.")
+        else:
+            st.altair_chart(charts.revenue_trend(monthly, height=340), use_container_width=True)
+
+    section_header("Revenue by category", "Kept revenue — cancelled and returned orders excluded.")
+    by_category = _safe("revenue by category", queries.revenue_by_category, engine)
+    if by_category is not None:
+        if by_category.empty:
+            empty_state("No category revenue yet.")
+        else:
+            st.altair_chart(
+                charts.magnitude_bar(by_category, category="category", value="revenue", height=300),
+                use_container_width=True,
+            )
 
 
 def _render_revenue(engine) -> None:
-    section_header("Revenue by state", "Collected INR revenue attributed to the customer's home state")
+    section_header("Revenue by state", "Collected INR revenue attributed to the customer's home state.")
     by_state = _safe("revenue by state", queries.revenue_by_state, engine)
     if by_state is not None:
         if by_state.empty:
             empty_state("No state-level revenue yet.")
         else:
-            top_state = by_state.head(12)
             st.altair_chart(
                 charts.magnitude_bar(
-                    top_state, category="state", value="revenue", category_title=None, height=380
+                    by_state.head(12), category="state", value="revenue", category_title=None, height=380
                 ),
                 use_container_width=True,
             )
@@ -148,11 +145,10 @@ def _render_revenue(engine) -> None:
             display["Collected revenue"] = display["Collected revenue"].map(format_inr)
             display["Paying customers"] = display["Paying customers"].map(format_count)
             display["Successful payments"] = display["Successful payments"].map(format_count)
-            with st.expander("All states"):
+            with st.expander(f"All {len(by_state)} states — table"):
                 st.dataframe(display, width="stretch", hide_index=True)
 
-    st.write("")
-    section_header("Monthly detail")
+    section_header("Monthly revenue", "Collected revenue and successful-payment count per calendar month.")
     monthly = _safe("revenue by month", queries.revenue_by_month, engine)
     if monthly is not None and not monthly.empty:
         detail = monthly.rename(
@@ -165,7 +161,7 @@ def _render_revenue(engine) -> None:
 
 
 def _render_customers(engine) -> None:
-    section_header("Top customers", "By collected revenue from successful payments")
+    section_header("Top customers", "The ten customers with the most collected revenue from successful payments.")
     top = _safe("top customers", queries.top_customers, engine)
     if top is not None:
         if top.empty:
@@ -186,7 +182,7 @@ def _render_customers(engine) -> None:
 
 
 def _render_orders_payments(engine) -> None:
-    section_header("Order status", "Distribution of orders across the fulfilment lifecycle")
+    section_header("Order status", "Where orders sit in the fulfilment lifecycle.")
     status_df = _safe("order status distribution", queries.order_status_distribution, engine)
     if status_df is not None:
         if status_df.empty:
@@ -199,10 +195,9 @@ def _render_orders_payments(engine) -> None:
                 use_container_width=True,
             )
 
-    st.write("")
     col1, col2 = st.columns(2)
     with col1:
-        section_header("Payment methods", "How customers pay — UPI-led, as in the Indian market")
+        section_header("Payment methods", "How customers pay — UPI-led, as in the Indian market.")
         pay_method = _safe("payment method distribution", queries.payment_method_distribution, engine)
         if pay_method is not None and not pay_method.empty:
             st.altair_chart(
@@ -212,7 +207,7 @@ def _render_orders_payments(engine) -> None:
                 use_container_width=True,
             )
     with col2:
-        section_header("Payment status", "Outcome of every recorded payment attempt")
+        section_header("Payment status", "Outcome of every recorded payment attempt.")
         pay_status = _safe("payment status distribution", queries.payment_status_distribution, engine)
         if pay_status is not None and not pay_status.empty:
             st.altair_chart(
@@ -226,11 +221,21 @@ def _render_orders_payments(engine) -> None:
             )
 
 
-def _render_data_quality(engine, batches) -> None:
+def _format_batch_label(batch_id: str) -> str:
+    """`20260828T200023Z_e7f6e9` -> `28 Aug 2026 20:00 · e7f6e9` -- a
+    readable option for the load selector, id still shown for reference."""
+    try:
+        stamp = pd.to_datetime(batch_id.split("_")[0].rstrip("Z"), format="%Y%m%dT%H%M%S")
+        return f"{stamp:%d %b %Y %H:%M} · {batch_id.split('_')[-1]}"
+    except (ValueError, IndexError):
+        return batch_id
+
+
+def _render_data_quality(engine, batches, reconciliation) -> None:
     section_header(
         "Pipeline health",
-        "The warehouse is current-state (Type 1): analytics elsewhere always reflect the latest "
-        "successful load. The selector below only inspects one load's own lineage and quality report.",
+        "The warehouse is current-state (Type 1): every figure on the other tabs reflects the "
+        "latest successful load. This selector only inspects one past load's lineage and quality.",
     )
     successful_batches = batches[batches["status"] == "SUCCESS"]
     if successful_batches.empty:
@@ -240,14 +245,17 @@ def _render_data_quality(engine, batches) -> None:
         )
         return
 
-    selected_batch_id = st.selectbox("Inspect a load", successful_batches["batch_id"])
+    selected_batch_id = st.selectbox(
+        "Load to inspect", successful_batches["batch_id"], format_func=_format_batch_label
+    )
     batch_row = batches[batches["batch_id"] == selected_batch_id].iloc[0]
-    health_cols = st.columns(4)
-    health_cols[0].metric("Status", batch_row["status"])
-    health_cols[1].metric("Loaded rows", format_count(batch_row["loaded_row_count"] or 0))
-    health_cols[2].metric("Curated rows", format_count(batch_row["curated_row_count"] or 0))
-    health_cols[3].metric(
-        "Loaded at", str(batch_row["completed_at"])[:19] if pd.notna(batch_row["completed_at"]) else "—"
+    health_cols = st.columns(3)
+    health_cols[0].metric("Load status", batch_row["status"], border=True)
+    health_cols[1].metric("Rows loaded", format_count(batch_row["loaded_row_count"] or 0), border=True)
+    health_cols[2].metric(
+        "Loaded at",
+        str(batch_row["completed_at"])[:16] if pd.notna(batch_row["completed_at"]) else "—",
+        border=True,
     )
 
     quality_report_path = rejected_batch_dir(selected_batch_id) / "quality_report.json"
@@ -258,12 +266,20 @@ def _render_data_quality(engine, batches) -> None:
             logger.error("Could not read quality report for %s: %s", selected_batch_id, exc)
             report = None
         if report is not None:
-            st.write("")
-            section_header("Validation quality report", f"Load {selected_batch_id}")
-            qc1, qc2, qc3 = st.columns(3)
-            qc1.metric("Valid rows", format_count(report["valid_rows"]))
-            qc2.metric("Rejected rows", format_count(report["rejected_rows"]))
-            qc3.metric("Quality", format_percent(report["quality_percentage"]))
+            section_header(
+                "Data quality",
+                "How much of this load survived validation, and whether order totals reconcile.",
+            )
+            qc = st.columns(4)
+            qc[0].metric("Valid rows", format_count(report["valid_rows"]), border=True)
+            qc[1].metric("Rejected rows", format_count(report["rejected_rows"]), border=True)
+            qc[2].metric("Validation pass rate", format_percent(report["quality_percentage"]), border=True)
+            qc[3].metric(
+                "Reconciliation rate",
+                format_percent(reconciliation["reconciliation_rate_pct"]) if reconciliation else "—",
+                help="Share of current-state orders whose recorded total matches the sum of their order_items.",
+                border=True,
+            )
             if report["rejection_reasons"]:
                 with st.expander("Rejection reasons"):
                     reasons_df = pd.DataFrame(
@@ -278,9 +294,17 @@ def _render_data_quality(engine, batches) -> None:
         )
 
     with st.expander("All pipeline loads"):
-        st.dataframe(batches, width="stretch", hide_index=True)
+        loads = batches.rename(
+            columns={
+                "batch_id": "Batch", "status": "Status", "started_at": "Started",
+                "completed_at": "Completed", "curated_row_count": "Curated rows",
+                "loaded_row_count": "Loaded rows", "error_message": "Error",
+            }
+        )
+        for col in ("Curated rows", "Loaded rows"):
+            loads[col] = loads[col].map(lambda v: format_count(v) if pd.notna(v) else "—")
+        st.dataframe(loads, width="stretch", hide_index=True)
 
-    st.write("")
     section_header(
         "Reconciliation mismatches",
         "Orders whose recorded total doesn't match the sum of their order_items, largest gap first.",
@@ -310,17 +334,22 @@ def main() -> None:
     inject_theme()
 
     freshness = _safe("data freshness", queries.data_freshness, engine)
-    as_of = ""
+    as_of = None
     if freshness and freshness.get("latest_order_date") is not None:
-        as_of = f" · data as of {pd.to_datetime(freshness['latest_order_date']).strftime('%d %b %Y')}"
+        as_of = f"Data as of {pd.to_datetime(freshness['latest_order_date']):%d %b %Y}"
 
     page_header(
         "QueryPilot",
         "India Payments & Commerce Analytics",
-        "Read-only analytics over a synthetic Indian digital-commerce warehouse "
-        f"built by the ingestion → validation → transformation → warehouse pipeline.{as_of}",
+        "Read-only analytics on a synthetic Indian digital-commerce and payments warehouse.",
     )
-    lineage_badge("Warehouse")
+    page_meta(
+        [
+            as_of,
+            "Synthetic dataset",
+            "Pipeline: Raw → Validated → Curated → Warehouse",
+        ]
+    )
 
     batches = _safe("pipeline batches", queries.pipeline_batches, engine)
     if batches is None:
@@ -341,7 +370,7 @@ def main() -> None:
         ["Overview", "Revenue", "Customers", "Orders & Payments", "Data Quality", "Ask QueryPilot"]
     )
     with overview:
-        _render_overview(engine, revenue, aov, payment_rate, reconciliation)
+        _render_overview(engine, revenue, aov, payment_rate)
     with revenue_tab:
         _render_revenue(engine)
     with customers_tab:
@@ -349,7 +378,7 @@ def main() -> None:
     with ops_tab:
         _render_orders_payments(engine)
     with quality_tab:
-        _render_data_quality(engine, batches)
+        _render_data_quality(engine, batches, reconciliation)
     with ask_tab:
         _safe("Ask QueryPilot", render_ask_querypilot, engine)
 

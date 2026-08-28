@@ -89,7 +89,11 @@ def format_percent(value, *, decimals: int = 1) -> str:
 
 
 def format_count(value) -> str:
+    """A whole-number count with Indian digit grouping, so counts read the
+    same way as the rupee figures elsewhere (e.g. 12,34,567)."""
     num = _coerce(value)
     if num is None:
         return "—"
-    return f"{int(round(num)):,}"
+    n = int(round(num))
+    sign = "-" if n < 0 else ""
+    return f"{sign}{indian_grouping(str(abs(n)))}"
