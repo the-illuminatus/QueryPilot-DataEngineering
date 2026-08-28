@@ -42,6 +42,7 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy.engine import Engine
 
+from dashboard.components import section_header
 from src.nl2sql import (
     SQLExecutionResult,
     SQLGenerationResult,
@@ -239,17 +240,16 @@ def _render_result(result: AskResult) -> None:
 
     # _STAGE_SUCCESS
     execution = result.execution
-    st.markdown("##### Result")
+    st.markdown("**Result**")
     if execution.row_count == 0:
         st.info("The query ran successfully but returned no rows.")
     else:
         st.dataframe(pd.DataFrame(list(execution.rows)), width="stretch", hide_index=True)
-        caption = f"{execution.row_count} row(s) · monetary columns are in INR"
+        caption = f"{execution.row_count} row(s) · amounts, where present, are in INR"
         if execution.truncated:
             caption += f" · truncated to the first {execution.row_count}, more were available"
         st.caption(caption)
 
-    st.write("")
     explanation_col, tables_col = st.columns([3, 1])
     with explanation_col:
         st.markdown("**Explanation**")
@@ -259,7 +259,7 @@ def _render_result(result: AskResult) -> None:
         tables = result.validation.referenced_tables or result.generation.tables_used
         st.write(", ".join(tables) if tables else "—")
 
-    with st.expander("Generated SQL (validated, executed read-only)"):
+    with st.expander("Generated SQL — validated, then executed read-only"):
         st.code(result.validation.normalized_sql, language="sql")
 
 
@@ -267,11 +267,11 @@ def render_ask_querypilot(engine: Engine) -> None:
     """Renders the 'Ask QueryPilot' section. `engine` is the dashboard's
     existing read-only engine (dashboard/db.py) -- passed in rather than
     fetched here, so this module never opens its own connection."""
-    st.subheader("Ask QueryPilot")
-    st.caption(
-        "Ask a question about the commerce and payments data in plain English. "
-        "QueryPilot writes the SQL, checks it is read-only, runs it against the warehouse, "
-        "and shows you the result alongside the query it used."
+    section_header(
+        "Ask QueryPilot",
+        "Ask a question about the commerce and payments data in plain English. QueryPilot writes "
+        "the SQL, checks it is read-only, runs it against the warehouse, and shows the result "
+        "alongside the query it used.",
     )
 
     configuration_error = get_configuration_error()
@@ -282,11 +282,10 @@ def render_ask_querypilot(engine: Engine) -> None:
         )
         return
 
-    with st.expander("Example questions"):
-        for question in EXAMPLE_QUESTIONS:
-            st.markdown(f"- {question}")
+    st.caption("Try one of these, or ask your own:")
+    st.markdown("\n".join(f"- {q}" for q in EXAMPLE_QUESTIONS))
 
-    with st.form("ask_querypilot_form"):
+    with st.form("ask_querypilot_form", border=False):
         question = st.text_input(
             "Natural-language question",
             placeholder="e.g. Which states generate the most collected revenue?",

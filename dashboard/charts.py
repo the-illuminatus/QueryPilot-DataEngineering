@@ -55,7 +55,16 @@ PAYMENT_STATUS_ROLE = {
 
 _BASE_CONFIG = dict(
     background="rgba(0,0,0,0)",
-    padding={"left": 4, "right": 12, "top": 4, "bottom": 4},
+    padding={"left": 4, "right": 12, "top": 6, "bottom": 4},
+)
+
+# Vega expression: format an axis/label value as compact INR (₹, lakh, crore)
+# so chart ticks read the same way as the KPI cards and tables.
+_INR_LABEL_EXPR = (
+    "datum.value === 0 ? '₹0'"
+    " : abs(datum.value) >= 10000000 ? '₹' + format(datum.value / 10000000, '.2~f') + ' Cr'"
+    " : abs(datum.value) >= 100000 ? '₹' + format(datum.value / 100000, '.1~f') + ' L'"
+    " : '₹' + format(datum.value, ',')"
 )
 
 
@@ -77,33 +86,43 @@ def _style(chart: alt.Chart, *, height: int = 260) -> alt.Chart:
     )
 
 
-def revenue_trend(df: pd.DataFrame, *, x: str = "month", y: str = "revenue") -> alt.Chart:
+def revenue_trend(df: pd.DataFrame, *, x: str = "month", y: str = "revenue", height: int = 320) -> alt.Chart:
     data = df.copy()
     data[x] = pd.to_datetime(data[x])
     data["label"] = data[y].map(format_inr_compact)
+    data["_is_last"] = data[x] == data[x].max()
 
     base = alt.Chart(data).encode(
-        x=alt.X(f"{x}:T", title=None, axis=alt.Axis(format="%b %Y", labelAngle=0)),
-        y=alt.Y(f"{y}:Q", title="Collected revenue (₹)", axis=alt.Axis(format="~s")),
+        x=alt.X(f"{x}:T", title=None, axis=alt.Axis(format="%b %Y", labelAngle=0, tickCount="month")),
+        y=alt.Y(
+            f"{y}:Q",
+            title=None,
+            axis=alt.Axis(labelExpr=_INR_LABEL_EXPR, tickCount=5, labelPadding=6),
+        ),
     )
     area = base.mark_area(
         line={"color": BLUE, "strokeWidth": 2},
         color=alt.Gradient(
             gradient="linear",
             stops=[
-                alt.GradientStop(color="rgba(57,135,229,0.02)", offset=0),
-                alt.GradientStop(color="rgba(57,135,229,0.28)", offset=1),
+                alt.GradientStop(color="rgba(57,135,229,0.03)", offset=0),
+                alt.GradientStop(color="rgba(57,135,229,0.32)", offset=1),
             ],
             x1=1, x2=1, y1=1, y2=0,
         ),
     )
-    points = base.mark_circle(size=34, color=BLUE, opacity=1).encode(
+    points = base.mark_circle(size=30, color=BLUE, opacity=1).encode(
         tooltip=[
             alt.Tooltip(f"{x}:T", title="Month", format="%B %Y"),
-            alt.Tooltip("label:N", title="Revenue"),
+            alt.Tooltip("label:N", title="Collected revenue"),
         ]
     )
-    return _style(area + points)
+    last_label = (
+        base.transform_filter(alt.datum._is_last)
+        .mark_text(align="right", dx=-8, dy=-10, color=LABEL, fontSize=11, fontWeight="bold")
+        .encode(text="label:N")
+    )
+    return _style(area + points + last_label, height=height)
 
 
 def magnitude_bar(
@@ -118,14 +137,16 @@ def magnitude_bar(
     data = df.copy()
     fmt = format_inr_compact if money else format_count
     data["label"] = data[value].map(fmt)
+    # Headroom on the right so the value label past the longest bar never clips.
+    domain_max = float(data[value].max()) * 1.18 if len(data) else 1.0
 
     base = alt.Chart(data).encode(
-        y=alt.Y(f"{category}:N", sort="-x", title=category_title),
-        x=alt.X(f"{value}:Q", title=None, axis=None),
+        y=alt.Y(f"{category}:N", sort="-x", title=category_title, axis=alt.Axis(labelLimit=180)),
+        x=alt.X(f"{value}:Q", title=None, axis=None, scale=alt.Scale(domain=[0, domain_max], nice=False)),
     )
     bars = base.mark_bar(color=BLUE, cornerRadiusEnd=3).encode(
         tooltip=[
-            alt.Tooltip(f"{category}:N", title=category_title or category),
+            alt.Tooltip(f"{category}:N", title=category_title or category.replace("_", " ").title()),
             alt.Tooltip("label:N", title=value.replace("_", " ").title()),
         ]
     )
@@ -147,10 +168,11 @@ def status_bar(
     data["label"] = data[value].map(format_count)
     data["_color"] = data[category].map(lambda s: STATUS_COLORS[role_map.get(s, "neutral")])
     order = list(role_map.keys())
+    domain_max = float(data[value].max()) * 1.12 if len(data) else 1.0
 
     base = alt.Chart(data).encode(
         x=alt.X(f"{category}:N", sort=order, title=None, axis=alt.Axis(labelAngle=0)),
-        y=alt.Y(f"{value}:Q", title=None, axis=None),
+        y=alt.Y(f"{value}:Q", title=None, axis=None, scale=alt.Scale(domain=[0, domain_max], nice=False)),
     )
     bars = base.mark_bar(cornerRadiusEnd=3).encode(
         color=alt.Color("_color:N", scale=None, legend=None),
