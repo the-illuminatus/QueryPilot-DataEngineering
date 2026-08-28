@@ -6,7 +6,7 @@ out of scope here.
 """
 
 EXPECTED_COLUMNS = {
-    "customers": ["customer_id", "full_name", "email", "city", "country", "signup_date"],
+    "customers": ["customer_id", "full_name", "email", "city", "state", "signup_date"],
     "products": ["product_id", "product_name", "category", "price"],
     "orders": ["order_id", "customer_id", "order_date", "status", "total_amount"],
     "order_items": ["order_item_id", "order_id", "product_id", "quantity", "unit_price"],

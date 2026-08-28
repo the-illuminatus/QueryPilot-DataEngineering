@@ -1,6 +1,8 @@
-# Dependencies needed only to regenerate the synthetic raw dataset
-# (scripts/generate_dataset.py). NOT required by the ingestion pipeline
-# or any other runtime code -- kept separate from requirements.txt on
-# purpose so the pipeline's real dependency footprint stays honest.
-
-Faker>=24.0
+# Development-time-only dependencies.
+#
+# The synthetic dataset generator (scripts/generate_dataset.py) is now
+# dependency-free -- it uses only the standard library -- so there is
+# nothing to install here at the moment. This file is kept as the
+# conventional place for future dev-only tooling (linters, type checkers,
+# generation helpers) so they never leak into requirements.txt and
+# inflate the pipeline's real runtime footprint.

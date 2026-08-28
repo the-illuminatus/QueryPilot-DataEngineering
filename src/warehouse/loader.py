@@ -20,13 +20,13 @@ from sqlalchemy.engine import Connection
 
 CUSTOMERS_UPSERT = text(
     """
-    INSERT INTO customers (customer_id, full_name, email, city, country, signup_date, batch_id)
-    VALUES (:customer_id, :full_name, :email, :city, :country, :signup_date, :batch_id)
+    INSERT INTO customers (customer_id, full_name, email, city, state, signup_date, batch_id)
+    VALUES (:customer_id, :full_name, :email, :city, :state, :signup_date, :batch_id)
     ON CONFLICT (customer_id) DO UPDATE SET
         full_name = EXCLUDED.full_name,
         email = EXCLUDED.email,
         city = EXCLUDED.city,
-        country = EXCLUDED.country,
+        state = EXCLUDED.state,
         signup_date = EXCLUDED.signup_date,
         batch_id = EXCLUDED.batch_id
     """

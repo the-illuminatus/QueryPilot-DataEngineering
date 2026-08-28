@@ -24,11 +24,54 @@ from sqlalchemy import text
 from config import settings
 from dashboard import queries
 from dashboard.db import build_readonly_engine
+from dashboard.format import (
+    format_count,
+    format_inr,
+    format_inr_compact,
+    format_percent,
+    indian_grouping,
+)
 from src.transformation.writer import curated_entity_path
 from src.warehouse.pipeline import run_warehouse_load
 from src.warehouse.schema import apply_schema
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+# ---------------------------------------------------------------------------
+# INR / number formatting (dashboard/format.py) -- pure, no database.
+# ---------------------------------------------------------------------------
+
+
+def test_indian_grouping_places_commas_the_indian_way():
+    assert indian_grouping("1250") == "1,250"
+    assert indian_grouping("123456") == "1,23,456"
+    assert indian_grouping("12345678") == "1,23,45,678"
+    assert indian_grouping("999") == "999"
+
+
+def test_format_inr_is_exact_with_symbol_and_grouping():
+    assert format_inr(1250) == "₹1,250.00"
+    assert format_inr(1234567.89) == "₹12,34,567.89"
+    assert format_inr(0) == "₹0.00"
+    assert format_inr(-500, decimals=0) == "-₹500"
+    assert format_inr(None) == "—"
+
+
+def test_format_inr_compact_scales_to_lakh_and_crore():
+    assert format_inr_compact(950) == "₹950"
+    assert format_inr_compact(45000) == "₹45,000"
+    assert format_inr_compact(125000) == "₹1.25L"
+    assert format_inr_compact(1240000) == "₹12.4L"
+    assert format_inr_compact(12400000) == "₹1.24Cr"
+    assert format_inr_compact(None) == "—"
+
+
+def test_format_percent_and_count():
+    assert format_percent(87.031) == "87.0%"
+    assert format_percent(None) == "—"
+    assert format_count(1833) == "1,833"
+    assert format_count(None) == "—"
 
 
 # ---------------------------------------------------------------------------
@@ -87,8 +130,8 @@ def _kpi_fixture_batch():
     the single-row fixture in test_warehouse.py."""
     customers = pd.DataFrame(
         [
-            {"customer_id": "DC1", "full_name": "Dana Lee", "email": "dana@x.com", "city": "X", "country": "US",
-             "signup_date": pd.Timestamp("2024-01-01")},
+            {"customer_id": "DC1", "full_name": "Dana Lee", "email": "dana@x.com", "city": "Bengaluru",
+             "state": "Karnataka", "signup_date": pd.Timestamp("2024-01-01")},
         ]
     )
     products = pd.DataFrame(
@@ -191,7 +234,7 @@ def test_readonly_engine_actually_rejects_writes(engine):
     [
         ("revenue_by_month", {"month", "revenue", "successful_payments"}),
         ("revenue_by_category", {"category", "revenue", "order_count"}),
-        ("top_customers", {"customer_id", "full_name", "country", "revenue", "successful_payments"}),
+        ("top_customers", {"customer_id", "full_name", "city", "state", "revenue", "successful_payments"}),
         ("order_status_distribution", {"status", "order_count", "pct_of_orders"}),
         ("payment_method_distribution", {"payment_method", "payment_count", "pct_of_payments"}),
         ("payment_status_distribution", {"payment_status", "payment_count", "pct_of_payments"}),
