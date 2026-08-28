@@ -26,7 +26,36 @@ from .providers import (
     get_sql_generation_provider,
 )
 
-__all__ = ["generate_sql", "get_configuration_error", "SQLGenerationResult"]
+__all__ = [
+    "generate_sql",
+    "get_configuration_error",
+    "validate_question_length",
+    "MAX_QUESTION_LENGTH",
+    "SQLGenerationResult",
+]
+
+# A production-safe ceiling on natural-language question length -- large
+# enough for any genuine warehouse question, small enough to reject an
+# obviously-oversized paste (a document, a prompt-injection attempt, ...)
+# before it ever reaches a provider. One constant, checked in one place
+# (validate_question_length below); nothing else in the codebase should
+# hardcode this number.
+MAX_QUESTION_LENGTH = 500
+
+
+def validate_question_length(question: str) -> Optional[str]:
+    """None if `question` is short enough to send to an LLM provider, or
+    a short, safe, user-facing message if it exceeds MAX_QUESTION_LENGTH.
+    A pure text-length guard -- unrelated to SQL safety (validate_sql()
+    is that boundary, downstream of generation entirely). Callers must
+    check this *before* calling generate_sql(); it does not call it
+    itself, so an oversized question can never even reach a provider."""
+    if len(question) > MAX_QUESTION_LENGTH:
+        return (
+            f"Question is too long ({len(question)} characters). "
+            f"Please ask something under {MAX_QUESTION_LENGTH} characters."
+        )
+    return None
 
 
 def get_configuration_error() -> Optional[str]:

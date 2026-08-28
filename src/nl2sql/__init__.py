@@ -15,7 +15,13 @@ on which one is active.
 from .context import build_schema_context
 from .discovery import discover_schema
 from .execution import SQLExecutionError, SQLExecutionResult, execute_sql
-from .generation import SQLGenerationResult, generate_sql, get_configuration_error
+from .generation import (
+    MAX_QUESTION_LENGTH,
+    SQLGenerationResult,
+    generate_sql,
+    get_configuration_error,
+    validate_question_length,
+)
 from .models import ColumnInfo, ForeignKeyInfo, SchemaInfo, TableInfo
 from .validation import SQLValidationResult, validate_sql
 
@@ -24,6 +30,8 @@ __all__ = [
     "build_schema_context",
     "generate_sql",
     "get_configuration_error",
+    "validate_question_length",
+    "MAX_QUESTION_LENGTH",
     "SQLGenerationResult",
     "validate_sql",
     "SQLValidationResult",

@@ -26,6 +26,15 @@ from src.nl2sql.validation import SQLValidationResult
 
 APP_PATH = str(Path(__file__).resolve().parent.parent / "dashboard" / "nl2sql_ui_app_for_test.py")
 
+
+def _generate_call_count(at: AppTest) -> int:
+    """AppTest's session_state proxy supports `in`/`[]` but not `.get()`
+    (a bare `.get` is treated as a missing widget key, not a dict
+    method) -- this is the safe way to read an optional counter."""
+    key = "_test_generate_call_count"
+    return at.session_state[key] if key in at.session_state else 0
+
+
 FAKE_SCHEMA = SchemaInfo(
     tables=(
         TableInfo(
@@ -325,6 +334,89 @@ def test_generation_failure_is_handled_safely_not_propagated(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Phase 7H: per-session request throttle (_check_and_record_throttle).
+#
+# Tested as a plain function against a plain dict + injected `now` --
+# no Streamlit runtime needed, mirroring how _run_pipeline takes `engine`
+# as a parameter instead of reaching for a global.
+# ---------------------------------------------------------------------------
+
+
+def test_throttle_first_request_is_allowed():
+    session_state = {}
+    assert nl2sql_ui._check_and_record_throttle(session_state, now=1000.0) is None
+
+
+def test_throttle_requests_within_the_session_budget_are_allowed():
+    session_state = {}
+    for i in range(nl2sql_ui.MAX_REQUESTS_PER_WINDOW):
+        assert nl2sql_ui._check_and_record_throttle(session_state, now=1000.0 + i) is None
+
+
+def test_throttle_request_beyond_the_session_budget_is_rejected():
+    session_state = {}
+    for i in range(nl2sql_ui.MAX_REQUESTS_PER_WINDOW):
+        nl2sql_ui._check_and_record_throttle(session_state, now=1000.0 + i)
+
+    result = nl2sql_ui._check_and_record_throttle(session_state, now=1000.0 + nl2sql_ui.MAX_REQUESTS_PER_WINDOW)
+
+    assert result is not None
+    assert "limit" in result.lower()
+
+
+def test_throttle_rejected_request_is_not_recorded_against_the_budget():
+    """A rejected attempt must not itself consume budget -- otherwise a
+    user hammering the button while throttled would never recover even
+    after the window rolls forward."""
+    session_state = {}
+    for i in range(nl2sql_ui.MAX_REQUESTS_PER_WINDOW):
+        nl2sql_ui._check_and_record_throttle(session_state, now=1000.0 + i)
+
+    now = 1000.0 + nl2sql_ui.MAX_REQUESTS_PER_WINDOW
+    nl2sql_ui._check_and_record_throttle(session_state, now=now)  # rejected
+    nl2sql_ui._check_and_record_throttle(session_state, now=now)  # rejected again
+
+    assert len(session_state[nl2sql_ui._THROTTLE_STATE_KEY]) == nl2sql_ui.MAX_REQUESTS_PER_WINDOW
+
+
+def test_throttle_allows_new_requests_once_the_window_rolls_forward():
+    session_state = {}
+    for i in range(nl2sql_ui.MAX_REQUESTS_PER_WINDOW):
+        nl2sql_ui._check_and_record_throttle(session_state, now=1000.0 + i)
+
+    blocked = nl2sql_ui._check_and_record_throttle(session_state, now=1000.0 + nl2sql_ui.MAX_REQUESTS_PER_WINDOW)
+    assert blocked is not None
+
+    later = 1000.0 + nl2sql_ui.WINDOW_SECONDS + 1
+    allowed = nl2sql_ui._check_and_record_throttle(session_state, now=later)
+    assert allowed is None
+
+
+def test_throttle_state_is_isolated_between_sessions():
+    """Two independent session_state dicts (i.e. two browser sessions)
+    never share a budget -- session_state is the only place this state
+    lives, so isolation falls straight out of using separate dicts."""
+    session_a = {}
+    session_b = {}
+    for i in range(nl2sql_ui.MAX_REQUESTS_PER_WINDOW):
+        nl2sql_ui._check_and_record_throttle(session_a, now=1000.0 + i)
+
+    assert nl2sql_ui._check_and_record_throttle(session_a, now=1000.0 + nl2sql_ui.MAX_REQUESTS_PER_WINDOW) is not None
+    assert nl2sql_ui._check_and_record_throttle(session_b, now=1000.0) is None
+
+
+def test_throttle_rejection_message_explains_when_to_retry():
+    session_state = {}
+    for i in range(nl2sql_ui.MAX_REQUESTS_PER_WINDOW):
+        nl2sql_ui._check_and_record_throttle(session_state, now=1000.0 + i)
+
+    message = nl2sql_ui._check_and_record_throttle(session_state, now=1000.0 + nl2sql_ui.MAX_REQUESTS_PER_WINDOW)
+
+    assert str(nl2sql_ui.MAX_REQUESTS_PER_WINDOW) in message
+    assert "try again" in message.lower()
+
+
+# ---------------------------------------------------------------------------
 # Rendering smoke tests via Streamlit's AppTest -- proves the UI actually
 # renders what _run_pipeline reports, with the pipeline mocked out.
 # ---------------------------------------------------------------------------
@@ -365,3 +457,92 @@ def test_render_validation_failure_shows_error_and_no_dataframe():
     assert not at.exception
     assert len(at.dataframe) == 0
     assert len(at.error) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Phase 7H rendering integration: length guard, throttle, and empty-question
+# behavior, exercised through the real render_ask_querypilot() control flow
+# (not just the pure guard functions above) -- proves the guards actually
+# stop the (fake, mocked) provider from being called, not just that the
+# guard functions themselves return the right value in isolation.
+# ---------------------------------------------------------------------------
+
+
+def test_render_empty_question_shows_a_warning_and_never_calls_the_provider():
+    at = AppTest.from_file(APP_PATH)
+    at.run()
+
+    at.button[0].click()  # submit without typing anything
+    at.run()
+
+    assert not at.exception
+    assert any("enter a question" in w.value.lower() for w in at.warning)
+    assert _generate_call_count(at) == 0
+
+
+def test_render_oversized_question_is_rejected_and_never_reaches_the_provider():
+    at = AppTest.from_file(APP_PATH)
+    at.run()
+
+    oversized_question = "a" * 1000  # well over MAX_QUESTION_LENGTH (500)
+    at.text_input[0].input(oversized_question)
+    at.button[0].click()
+    at.run()
+
+    assert not at.exception
+    assert any("too long" in w.value.lower() for w in at.warning)
+    assert _generate_call_count(at) == 0
+    assert len(at.dataframe) == 0
+
+
+def test_render_question_at_exactly_the_limit_is_not_rejected_by_the_length_guard():
+    at = AppTest.from_file(APP_PATH)
+    at.run()
+
+    at.text_input[0].input("a" * 500)  # exactly MAX_QUESTION_LENGTH
+    at.button[0].click()
+    at.run()
+
+    assert not at.exception
+    assert not any("too long" in w.value.lower() for w in at.warning)
+    assert _generate_call_count(at) == 1
+
+
+def test_render_repeated_rapid_submissions_eventually_hit_the_throttle():
+    at = AppTest.from_file(APP_PATH)
+    at.run()
+
+    max_requests = 5  # nl2sql_ui.MAX_REQUESTS_PER_WINDOW, at the time of writing
+    for i in range(max_requests):
+        at.text_input[0].input(f"How many orders? attempt {i}")
+        at.button[0].click()
+        at.run()
+        assert not at.exception
+
+    # The provider was actually called for every one of the allowed attempts.
+    assert _generate_call_count(at) == max_requests
+
+    # One more, over budget -- must be rejected without calling the provider.
+    at.text_input[0].input("How many orders? one too many")
+    at.button[0].click()
+    at.run()
+
+    assert not at.exception
+    assert any("limit" in w.value.lower() for w in at.warning)
+    assert _generate_call_count(at) == max_requests  # unchanged
+
+
+def test_render_normal_single_question_still_works_with_guards_in_place():
+    """Guardrails must not get in the way of ordinary, single-question use
+    -- the exact scenario from test_render_submitting_a_question_shows_dataframe_result,
+    reconfirmed now that the length/throttle checks sit in front of it."""
+    at = AppTest.from_file(APP_PATH)
+    at.run()
+
+    at.text_input[0].input("How many orders are there?")
+    at.button[0].click()
+    at.run()
+
+    assert not at.exception
+    assert len(at.dataframe) == 1
+    assert _generate_call_count(at) == 1

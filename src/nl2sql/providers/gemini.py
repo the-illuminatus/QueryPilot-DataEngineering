@@ -39,7 +39,12 @@ from .base import (
 DEFAULT_MODEL = "gemini-flash-latest"
 
 _API_BASE = "https://generativelanguage.googleapis.com/v1beta"
-_TIMEOUT_SECONDS = 30
+# A structured-output generateContent call against "gemini-flash-latest"
+# was measured (live, real API) taking ~81s to complete successfully --
+# 30s was simply too short for this feature's real-world latency, not a
+# transient outage: the identical request succeeded outright once given
+# enough time. 90s leaves real headroom above that measurement.
+_TIMEOUT_SECONDS = 90
 
 _RESPONSE_SCHEMA = {
     "type": "object",

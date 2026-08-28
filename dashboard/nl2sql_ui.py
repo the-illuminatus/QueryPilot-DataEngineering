@@ -34,8 +34,9 @@ active. See src/nl2sql/providers/ for that selection.
 """
 
 import logging
+import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import MutableMapping, Optional
 
 import pandas as pd
 import streamlit as st
@@ -50,6 +51,7 @@ from src.nl2sql import (
     execute_sql,
     generate_sql,
     get_configuration_error,
+    validate_question_length,
     validate_sql,
 )
 
@@ -59,6 +61,41 @@ _SESSION_KEY = "ask_querypilot_result"
 _SCHEMA_CACHE_TTL_SECONDS = 300
 _MAX_ROWS = 200
 _TIMEOUT_SECONDS = 20.0
+
+# Per-session request throttle: a small, bounded number of generation
+# requests per rolling time window, tracked entirely in Streamlit
+# session state (no database, no shared/global state across sessions --
+# each browser session gets its own independent budget). Conservative
+# enough to stop accidental repeated-clicking / runaway LLM usage,
+# generous enough that normal interactive use of the feature (a few
+# questions in a row while exploring it) never trips it.
+_THROTTLE_STATE_KEY = "ask_querypilot_request_timestamps"
+MAX_REQUESTS_PER_WINDOW = 5
+WINDOW_SECONDS = 60.0
+
+
+def _check_and_record_throttle(session_state: MutableMapping, now: float) -> Optional[str]:
+    """None -- and this request counted against the session's budget --
+    if another generation request is allowed right now. Otherwise, a
+    short, safe, user-facing message, and the request is *not* recorded
+    (a rejected request doesn't consume budget). `session_state` and
+    `now` are taken as parameters rather than reaching for `st.session_state`/
+    `time.monotonic()` internally, so this is testable with a plain dict
+    and fake timestamps -- no Streamlit runtime required (mirrors how
+    `_run_pipeline` takes `engine` as a parameter for the same reason).
+    Deciding and recording happen together in one place so there's no
+    separate "did I remember to record this" step to get wrong."""
+    timestamps = [t for t in session_state.get(_THROTTLE_STATE_KEY, []) if now - t < WINDOW_SECONDS]
+    if len(timestamps) >= MAX_REQUESTS_PER_WINDOW:
+        session_state[_THROTTLE_STATE_KEY] = timestamps  # still prune expired entries
+        retry_after = max(1, round(WINDOW_SECONDS - (now - timestamps[0])))
+        return (
+            f"You've reached the limit of {MAX_REQUESTS_PER_WINDOW} questions per "
+            f"{int(WINDOW_SECONDS)} seconds. Try again in about {retry_after}s."
+        )
+    timestamps.append(now)
+    session_state[_THROTTLE_STATE_KEY] = timestamps
+    return None
 
 EXAMPLE_QUESTIONS = (
     "How many successful payments were made?",
@@ -205,7 +242,7 @@ def _render_result(result: AskResult) -> None:
     if execution.row_count == 0:
         st.info("No results found.")
     else:
-        st.dataframe(pd.DataFrame(list(execution.rows)), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(list(execution.rows)), width="stretch", hide_index=True)
         caption = f"{execution.row_count} row(s)"
         if execution.truncated:
             caption += f" (truncated to the first {execution.row_count} -- more rows were available)"
@@ -253,11 +290,25 @@ def render_ask_querypilot(engine: Engine) -> None:
 
     # Only an actual form submission runs the pipeline -- a rerun caused
     # by interacting with any other widget on the page (e.g. the batch
-    # selector) leaves `submitted` False, so nothing re-executes.
+    # selector) leaves `submitted` False, so nothing re-executes, and
+    # nothing below (length guard, throttle, the pipeline itself) runs
+    # on a rerun that isn't a real submission.
     if submitted:
         question = question.strip()
+        length_error = validate_question_length(question) if question else None
+        throttle_error = None
+        if question and length_error is None:
+            # Checked (and, if allowed, recorded) only for a question
+            # that's actually going to be sent to a provider -- an
+            # empty or oversized question never consumes budget.
+            throttle_error = _check_and_record_throttle(st.session_state, time.monotonic())
+
         if not question:
             st.warning("Enter a question first.")
+        elif length_error is not None:
+            st.warning(length_error)
+        elif throttle_error is not None:
+            st.warning(throttle_error)
         else:
             with st.spinner("Generating and running SQL..."):
                 st.session_state[_SESSION_KEY] = _run_pipeline(engine, question)
