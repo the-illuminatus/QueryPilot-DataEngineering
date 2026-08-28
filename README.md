@@ -1,9 +1,11 @@
 # QueryPilot Data Engineering
 
 A standalone, portfolio-focused Data Engineering pipeline. This project is
-independent of any prior application it may have originated from — it does
-not include a web frontend, application backend, or LLM/NL2SQL
-functionality.
+independent of any prior application it may have originated from — no
+Spring Boot/Angular, no auth. It does include a read-only analytics
+dashboard (Phase 6) and a schema-aware, multi-provider NL2SQL layer
+(Phase 7), both built directly on top of the pipeline and warehouse below
+rather than as a separate application.
 
 ## Purpose
 
@@ -44,6 +46,8 @@ Dashboard (read-only consumption layer)
 | Configuration        | Environment variables (`.env`) |
 | Testing              | pytest                     |
 | Dashboard            | Streamlit                  |
+| NL2SQL LLM provider  | Provider-agnostic (Anthropic / Gemini / Ollama / OpenRouter) |
+| SQL safety gate      | sqlglot (AST-based validation) |
 
 DuckDB may be added later for direct SQL-over-Parquet querying if it proves
 useful — it is not a current dependency.
@@ -72,13 +76,18 @@ curated Parquet written per batch under `data/curated/`.
 with idempotent upserts, full batch lineage, transactional safety, and
 analytical SQL.
 
-**Phase 6 — Analytics dashboard (this state):** a read-only Streamlit
-dashboard over the warehouse — KPIs, revenue/customer/order/payment
-analytics, pipeline health, and reconciliation drill-down — see below.
+**Phase 6 — Analytics dashboard:** a read-only Streamlit dashboard over the
+warehouse — KPIs, revenue/customer/order/payment analytics, pipeline
+health, and reconciliation drill-down — see below.
 
-Not yet implemented: NL2SQL (explicitly deferred until the dashboard is
-stable), and anything beyond what's listed above (no Airflow/Kafka/Spark/
-dbt/Kubernetes/auth — deliberately out of scope for this project's size).
+**Phase 7 — NL2SQL / "Ask QueryPilot" (this state):** a schema-aware
+natural-language-to-SQL layer added on top of the stable warehouse and
+dashboard, with its own independent SQL-safety and read-only-execution
+boundaries and support for multiple LLM providers — see below.
+
+Not yet implemented: anything beyond what's listed above (no
+Airflow/Kafka/Spark/dbt/Kubernetes/auth — deliberately out of scope for
+this project's size).
 
 ## Dataset & Ingestion (Phase 2)
 
@@ -242,6 +251,59 @@ the dashboard cannot write to the warehouse.
 place. The one dashboard-specific query (batch load history, for the
 selector) lives under `sql/analytics/dashboard/`, for the same reason.
 
+## NL2SQL — "Ask QueryPilot" (Phase 7)
+
+A schema-aware natural-language-to-SQL layer (`src/nl2sql/`), exposed as
+its own section in the dashboard, that lets a user ask a plain-English
+question about the warehouse and get back real data:
+
+```
+discover_schema() → build_schema_context() → generate_sql()
+    → validate_sql() → execute_sql()
+```
+
+Each stage is an independent, separately-tested module — schema
+discovery/context (`discovery.py`, `context.py`), LLM SQL generation
+(`generation.py` + `providers/`), a static AST-based SQL safety gate
+(`validation.py`, via sqlglot), and bounded read-only execution
+(`execution.py`, reusing the same `SET SESSION CHARACTERISTICS AS
+TRANSACTION READ ONLY` guarantee the dashboard itself uses).
+
+**The LLM only ever produces a candidate SQL string — nothing more.** It
+never executes anything and is never trusted to self-police "SELECT
+only": every candidate is independently parsed into an AST and rejected
+unless it's a single, genuinely read-only statement (this also catches
+things a keyword filter would miss, like a write hidden inside a CTE)
+*before* it ever reaches PostgreSQL, over a connection that is itself
+read-only regardless. SQL validation and read-only execution are
+deliberately kept as separate safety boundaries from generation — a
+provider (or a bug in one) can produce bad SQL; it cannot make bad SQL
+run.
+
+### Provider Configuration
+
+Which LLM answers a question is configured, not hardcoded — set
+`NL2SQL_PROVIDER` in `.env` to one of:
+
+| Provider     | `NL2SQL_PROVIDER` | Needs                                   | Notes |
+|--------------|--------------------|------------------------------------------|-------|
+| Anthropic    | `anthropic`        | `ANTHROPIC_API_KEY`                      | Default if `NL2SQL_PROVIDER` is left unset, for backward compatibility. Paid API. |
+| Gemini       | `gemini`           | `GEMINI_API_KEY`                         | Preferred no-cost option — Google's free tier. |
+| Ollama       | `ollama`           | `NL2SQL_MODEL` (a model you've pulled locally), optionally `OLLAMA_BASE_URL` | Fully local, no cloud key, no cost. Requires `ollama serve` running. |
+| OpenRouter   | `openrouter`       | `OPENROUTER_API_KEY` + `NL2SQL_MODEL`    | OpenAI-compatible access to many models, including free ones. |
+
+`NL2SQL_MODEL` optionally overrides the model for whichever provider is
+selected (required, not optional, for Ollama and OpenRouter — see
+`.env.example` for exact defaults and format per provider). Only the
+selected provider's own settings are read; an unset or invalid
+`NL2SQL_PROVIDER` value, or a selected provider missing its own required
+setting, fails with a clear, safe message in the dashboard rather than a
+crash or a stack trace.
+
+**Credentials belong in `.env` only** (gitignored) — never in
+`.env.example`, never hardcoded, never committed. `.env.example`
+documents every variable above with no real values filled in.
+
 ## Project Structure
 
 ```
@@ -262,7 +324,9 @@ selector) lives under `sql/analytics/dashboard/`, for the same reason.
 │   ├── validation/            # entity/referential/temporal rules, accepted+rejected output
 │   ├── transformation/        # type casting, line_total, order reconciliation, curated Parquet
 │   ├── warehouse/             # PostgreSQL schema, upsert loading, lineage, reconciliation
-│   └── catalog/                # lightweight dataset/schema metadata (not yet used)
+│   ├── catalog/                # lightweight dataset/schema metadata (not yet used)
+│   └── nl2sql/                  # discovery, context, generation, validation, execution
+│       └── providers/            # anthropic / gemini / ollama / openrouter adapters
 ├── sql/
 │   ├── ddl/                    # warehouse table definitions (applied idempotently by the loader)
 │   └── analytics/               # 10 read-only analytical queries
@@ -271,7 +335,8 @@ selector) lives under `sql/analytics/dashboard/`, for the same reason.
 │   ├── app.py                    # Streamlit entrypoint / page layout
 │   ├── queries.py                 # reads + executes sql/analytics/*.sql, Streamlit-cached
 │   ├── db.py                       # cached, read-only-enforced PostgreSQL engine
-│   └── components.py                # KPI cards, formatting, small shared UI pieces
+│   ├── components.py                # KPI cards, formatting, small shared UI pieces
+│   └── nl2sql_ui.py                  # "Ask QueryPilot" section -- orchestrates src/nl2sql only
 ├── tests/                       # pytest suite (unit + real-database integration tests)
 ├── config/
 │   └── settings.py              # environment-driven configuration

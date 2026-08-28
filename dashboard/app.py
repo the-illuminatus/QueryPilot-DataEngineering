@@ -33,6 +33,7 @@ from sqlalchemy.exc import OperationalError
 from dashboard import queries
 from dashboard.components import format_currency, format_percent, kpi_row, lineage_badge, section_header
 from dashboard.db import get_engine
+from dashboard.nl2sql_ui import render_ask_querypilot
 from src.validation.rejection import rejected_batch_dir
 
 logging.basicConfig(level=logging.INFO)
@@ -105,6 +106,15 @@ def main() -> None:
         "Inspect a load (lineage/health only)",
         successful_batches["batch_id"],
     )
+
+    st.divider()
+
+    # --- Ask QueryPilot (NL2SQL) ---------------------------------------------
+    # Orchestrates the existing src/nl2sql pipeline only -- see
+    # dashboard/nl2sql_ui.py's module docstring. Wrapped the same way every
+    # other section on this page is (_safe): a failure here is logged and
+    # shown as a generic message, never taking down the rest of the dashboard.
+    _safe("Ask QueryPilot", render_ask_querypilot, engine)
 
     st.divider()
 
