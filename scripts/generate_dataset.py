@@ -125,8 +125,9 @@ EMAIL_DOMAINS = [
 
 # Relative popularity of each category in the product catalogue and in
 # baskets -- everyday low-value categories dominate, big-ticket ones are
-# rare, so the order-value distribution looks like real consumer
-# e-commerce (lots of small orders, a long tail of expensive ones).
+# rarer but no longer vanishingly thin, so the order-value distribution
+# looks like real consumer e-commerce (lots of small orders, a long tail
+# of expensive ones).
 CATEGORY_WEIGHTS = {
     "Grocery & Gourmet": 22,
     "Fashion": 20,
@@ -134,115 +135,332 @@ CATEGORY_WEIGHTS = {
     "Home & Kitchen": 12,
     "Books": 10,
     "Toys & Baby": 8,
+    "Electronics": 6,
+    "Mobile Accessories": 6,
     "Sports & Fitness": 6,
-    "Mobile Accessories": 4,
-    "Electronics": 3,
-    "Smartphones": 2,
-    "Large Appliances": 1,
+    "Smartphones": 4,
+    "Large Appliances": 4,
 }
 
-# Per-category INR price band (low, high, step) and a small brand/item
-# vocabulary. Prices are drawn on the step so they read like real MRPs
-# (e.g. 15990, not 15987.34), and skewed towards the low end of each
-# band (see _skewed_price) so a category's typical item is cheap even
-# when its ceiling is high.
+# Each category is a list of *product-line groups*. A group pairs a set of
+# brands that actually make that kind of thing with the item names they
+# make, and gives that line its own tight INR band (low, high, step) --
+# so "Boult" (an audio brand) can never be attached to "Thin & Light
+# Laptop", and a split AC can never be priced like a phone case. Prices
+# are drawn on the step so they read like real MRPs, and skewed towards
+# the low end of each band (see _skewed_price) so a line's typical item
+# is cheap even when its ceiling is high. This is the same principle the
+# Smartphones / Mobile Accessories split already used, applied
+# throughout.
 CATEGORY_CONFIG = {
-    "Smartphones": {
-        # Budget handsets to flagships -- the wide ceiling is only ever
-        # reached by a phone, never by an accessory (accessories are their
-        # own category below).
-        "band": (6499, 154900, 100),
-        "brands": ["Samsung", "Xiaomi", "Redmi", "realme", "OnePlus", "vivo", "OPPO",
-                   "Apple", "Motorola", "Nothing", "iQOO"],
-        # No storage/spec in the name -- price is drawn across the whole
-        # band, so a name must not imply a tier the price then contradicts.
-        "items": ["5G Smartphone", "Smartphone"],
-    },
-    "Mobile Accessories": {
-        "band": (149, 4999, 50),
-        "brands": ["boAt", "Noise", "Boult", "Portronics", "Ambrane", "pTron",
-                   "Spigen", "Stuffcool", "Zebronics", "Mi"],
-        "items": ["Wireless Earbuds", "Bluetooth Neckband", "20000mAh Power Bank",
-                  "33W Fast Charger", "Tempered Glass", "Silicone Back Cover",
-                  "USB-C Cable", "Car Phone Charger"],
-    },
-    "Electronics": {
-        "band": (499, 89990, 100),
-        "brands": ["Sony", "LG", "boAt", "JBL", "Noise", "Boult", "Portronics",
-                   "HP", "Dell", "Lenovo", "Acer", "Canon"],
-        "items": ["Bluetooth Speaker", "Soundbar", "Smartwatch", "43-inch 4K TV",
-                  "Thin & Light Laptop", "Wireless Mouse", "Mechanical Keyboard",
-                  "DSLR Camera", "Dual-Band WiFi Router", "Party Speaker"],
-    },
-    "Home & Kitchen": {
-        "band": (149, 24999, 50),
-        "brands": ["Prestige", "Pigeon", "Milton", "Cello", "Borosil", "Wonderchef",
-                   "Hawkins", "Butterfly", "Bajaj"],
-        "items": ["Induction Cooktop", "Non-Stick Kadai", "5L Pressure Cooker",
-                  "750W Mixer Grinder", "Steel Water Bottle 1L", "18-Piece Dinner Set",
-                  "1.5L Electric Kettle", "3-Piece Casserole Set", "Chopper"],
-    },
-    "Large Appliances": {
-        "band": (6990, 74990, 500),
-        "brands": ["LG", "Samsung", "Whirlpool", "Voltas", "Godrej", "Haier",
-                   "Blue Star", "IFB"],
-        "items": ["1.5 Ton Split AC", "Double Door Refrigerator",
-                  "Front Load Washing Machine", "Convection Microwave Oven",
-                  "Desert Air Cooler", "Dishwasher"],
-    },
-    "Fashion": {
-        "band": (249, 6999, 50),
-        "brands": ["Allen Solly", "Peter England", "Levi's", "U.S. Polo Assn.",
-                   "Biba", "W for Woman", "Fabindia", "Roadster", "Puma", "Nike",
-                   "Woodland", "Bata"],
-        "items": ["Cotton Casual Shirt", "Slim Fit Jeans", "Cotton Kurta Set",
-                  "Anarkali Kurti", "Running Shoes", "Leather Wallet",
-                  "Analog Wrist Watch", "Laptop Backpack", "Cotton T-Shirt"],
-    },
-    "Beauty & Personal Care": {
-        "band": (99, 3499, 10),
-        "brands": ["Lakme", "Mamaearth", "Nykaa", "Himalaya", "L'Oreal Paris",
-                   "Dot & Key", "Plum", "WOW Skin Science", "Biotique"],
-        "items": ["Vitamin C Face Serum", "Sunscreen SPF 50", "Matte Lipstick",
-                  "Ubtan Face Wash", "Onion Hair Oil", "Body Lotion 400ml",
-                  "Long-Stay Kajal", "Anti-Dandruff Shampoo 650ml"],
-    },
-    "Grocery & Gourmet": {
-        "band": (45, 2499, 5),
-        "brands": ["Tata", "Amul", "Aashirvaad", "Fortune", "Nestle", "Britannia",
-                   "Haldiram's", "MDH", "Everest", "Saffola"],
-        "items": ["Whole Wheat Atta 5kg", "Toor Dal 1kg", "Refined Oil 1L",
-                  "Basmati Rice 5kg", "Instant Coffee 200g", "Cow Ghee 1L",
-                  "Garam Masala 100g", "Assorted Dry Fruits 500g", "Digestive Biscuits"],
-    },
-    "Books": {
-        "band": (99, 1499, 10),
-        "brands": ["Penguin", "HarperCollins", "Rupa", "Westland", "Aleph", "Bloomsbury"],
-        "items": ["The Midnight Library (Paperback)", "Wings of Fire (Paperback)",
-                  "The Immortals of Meluha (Paperback)", "Atomic Habits (Paperback)",
-                  "Ikigai (Hardcover)", "India After Gandhi (Paperback)",
-                  "The Palace of Illusions (Paperback)", "Sapiens (Paperback)"],
-    },
-    "Sports & Fitness": {
-        "band": (199, 18999, 50),
-        "brands": ["Nivia", "Cosco", "Yonex", "Vector X", "HRX", "Boldfit", "Kore",
-                   "Cockatoo"],
-        "items": ["6mm Yoga Mat", "Adjustable Dumbbell Set", "Size 5 Football",
-                  "Badminton Racket", "Skipping Rope", "Resistance Band Set",
-                  "Kashmir Willow Cricket Bat", "Gym Training Gloves"],
-    },
-    "Toys & Baby": {
-        "band": (149, 7999, 10),
-        "brands": ["Funskool", "Hot Wheels", "LEGO", "Mattel", "Chicco", "MamyPoko",
-                   "LuvLap"],
-        "items": ["Building Blocks Set", "Remote Control Car", "Soft Teddy Bear",
-                  "Diapers XL (Pack of 64)", "36-Piece Floor Puzzle",
-                  "Anti-Colic Feeding Bottle", "Baby Activity Gym", "Family Board Game"],
-    },
+    "Smartphones": [
+        {
+            # Budget / mid-range: the volume tier. Brands here that also
+            # make flagships (Samsung, vivo, OPPO) keep their budget lines
+            # in this band; brands that never cross ~45k stay only here.
+            "band": (6499, 44990, 100),
+            "brands": ["Redmi", "realme", "POCO", "Motorola", "Samsung", "vivo",
+                       "OPPO", "Lava", "Infinix", "iQOO"],
+            "items": ["5G Smartphone", "Smartphone"],
+        },
+        {
+            # Premium / flagship. Only brands that genuinely sell 40k+
+            # phones in India -- so a price near the ceiling never lands on
+            # a budget brand.
+            "band": (39990, 149900, 500),
+            "brands": ["Samsung", "Apple", "OnePlus", "Xiaomi", "vivo", "OPPO", "Nothing"],
+            "items": ["5G Smartphone", "Flagship Smartphone"],
+        },
+    ],
+    "Mobile Accessories": [
+        {
+            "band": (699, 3999, 50),  # audio
+            "brands": ["boAt", "Noise", "Boult", "pTron", "Zebronics", "realme"],
+            "items": ["Wireless Earbuds", "Bluetooth Neckband", "Over-Ear Headphones"],
+        },
+        {
+            "band": (799, 3499, 50),  # power banks
+            "brands": ["Ambrane", "Mi", "URBN", "Stuffcool", "Duracell"],
+            "items": ["10000mAh Power Bank", "20000mAh Power Bank"],
+        },
+        {
+            "band": (149, 1799, 50),  # chargers & cables
+            "brands": ["Ambrane", "Mi", "Portronics", "Stuffcool", "boAt", "Wingle"],
+            "items": ["33W Fast Charger", "65W GaN Charger", "USB-C Cable (1.5m)",
+                      "Car Phone Charger", "3-in-1 Charging Cable"],
+        },
+        {
+            "band": (149, 1299, 50),  # protection
+            "brands": ["Spigen", "Ringke", "Stuffcool", "GoBhaarat"],
+            "items": ["Tempered Glass (Pack of 2)", "Silicone Back Cover", "Rugged Phone Case"],
+        },
+    ],
+    "Electronics": [
+        {
+            "band": (1990, 27999, 100),  # home audio
+            "brands": ["Sony", "JBL", "boAt", "Zebronics", "Philips", "Marshall"],
+            "items": ["Bluetooth Party Speaker", "Soundbar", "Portable Bluetooth Speaker",
+                      "Bookshelf Speaker Pair"],
+        },
+        {
+            "band": (26990, 119900, 500),  # laptops (monitors are a separate tier -- kept out)
+            "brands": ["HP", "Dell", "Lenovo", "Acer", "ASUS"],
+            "items": ["Thin & Light Laptop", "Gaming Laptop", "2-in-1 Laptop"],
+        },
+        {
+            "band": (499, 5999, 50),  # PC peripherals
+            "brands": ["Logitech", "HP", "Portronics", "Zebronics", "Dell"],
+            "items": ["Wireless Mouse", "Mechanical Keyboard", "Keyboard & Mouse Combo", "1080p Webcam"],
+        },
+        {
+            "band": (10990, 22990, 500),  # HD / Full-HD televisions (smaller screens)
+            "brands": ["Samsung", "LG", "TCL", "Xiaomi", "Kodak", "Acer"],
+            "items": ["32-inch HD LED TV", "40-inch Full HD LED TV"],
+        },
+        {
+            "band": (24990, 74990, 500),  # 4K smart televisions (larger screens)
+            "brands": ["Samsung", "LG", "Sony", "TCL", "Xiaomi", "OnePlus"],
+            "items": ["43-inch 4K Smart TV", "50-inch 4K Smart TV", "55-inch 4K Smart TV"],
+        },
+        {
+            "band": (999, 19999, 100),  # smartwatches -- budget Noise to Galaxy Watch, name implies no tier
+            "brands": ["Noise", "boAt", "Fire-Boltt", "Amazfit", "Samsung"],
+            "items": ["Smartwatch"],
+        },
+        {
+            "band": (24990, 89990, 500),  # cameras
+            "brands": ["Canon", "Nikon", "Sony", "GoPro"],
+            "items": ["DSLR Camera (with Kit Lens)", "Mirrorless Camera", "Action Camera"],
+        },
+        {
+            "band": (999, 7999, 100),  # networking
+            "brands": ["TP-Link", "D-Link", "Tenda", "Mercusys"],
+            "items": ["Dual-Band WiFi Router", "WiFi Range Extender", "Mesh WiFi System (2-pack)"],
+        },
+    ],
+    "Large Appliances": [
+        {
+            "band": (23990, 54990, 500),  # air conditioners -- generic name, no tonnage tier
+            "brands": ["LG", "Samsung", "Voltas", "Daikin", "Blue Star", "Lloyd", "Hitachi"],
+            "items": ["Split AC", "Window AC", "Inverter Split AC"],
+        },
+        {
+            "band": (12990, 36990, 500),  # refrigerators (single/double door)
+            "brands": ["LG", "Samsung", "Whirlpool", "Godrej", "Haier"],
+            "items": ["Single Door Refrigerator", "Double Door Refrigerator"],
+        },
+        {
+            "band": (42990, 94990, 1000),  # premium refrigerators
+            "brands": ["LG", "Samsung", "Bosch", "Haier"],
+            "items": ["Side-by-Side Refrigerator", "French Door Refrigerator"],
+        },
+        {
+            "band": (9490, 22990, 500),  # top-load / semi-automatic washing machines
+            "brands": ["LG", "Samsung", "Whirlpool", "Godrej", "Panasonic"],
+            "items": ["Semi-Automatic Washing Machine", "Top Load Washing Machine"],
+        },
+        {
+            "band": (23990, 52990, 500),  # front-load washing machines
+            "brands": ["LG", "Samsung", "Bosch", "IFB"],
+            "items": ["Front Load Washing Machine"],
+        },
+        {
+            "band": (5490, 18990, 100),  # microwave ovens
+            "brands": ["IFB", "LG", "Samsung", "Panasonic", "Godrej"],
+            "items": ["Solo Microwave Oven", "Grill Microwave Oven", "Convection Microwave Oven"],
+        },
+        {
+            "band": (4990, 15990, 100),  # air coolers
+            "brands": ["Symphony", "Bajaj", "Crompton", "Orient", "Havells"],
+            "items": ["Desert Air Cooler", "Tower Air Cooler", "Personal Air Cooler"],
+        },
+        {
+            "band": (17990, 46990, 500),  # dishwashers & freezers
+            "brands": ["IFB", "Bosch", "LG", "Voltas Beko"],
+            "items": ["Dishwasher (13 Place Settings)", "Chest Freezer 200L"],
+        },
+    ],
+    "Home & Kitchen": [
+        {
+            "band": (399, 2999, 50),  # cookware -- single pieces + pressure cookers
+            "brands": ["Prestige", "Hawkins", "Pigeon", "Butterfly", "Wonderchef", "Vinod"],
+            "items": ["5L Pressure Cooker", "3L Pressure Cooker", "Non-Stick Kadai",
+                      "Non-Stick Frying Pan", "Non-Stick Dosa Tawa"],
+        },
+        {
+            "band": (899, 5999, 50),  # kitchen appliances -- mixer/cooktop tier
+            "brands": ["Prestige", "Bajaj", "Philips", "Pigeon", "Havells", "Wonderchef"],
+            "items": ["Induction Cooktop", "750W Mixer Grinder", "Hand Blender",
+                      "Food Processor", "Electric Chopper"],
+        },
+        {
+            "band": (549, 2499, 50),  # kitchen appliances -- kettle/toaster tier
+            "brands": ["Prestige", "Bajaj", "Philips", "Pigeon", "Borosil"],
+            "items": ["1.5L Electric Kettle", "2-Slice Pop-up Toaster", "Sandwich Maker",
+                      "Hand Mixer"],
+        },
+        {
+            "band": (549, 3999, 50),  # dinnerware
+            "brands": ["Cello", "Borosil", "La Opala", "Larah", "Milton"],
+            "items": ["18-Piece Dinner Set", "Opalware Dinner Set (18-Piece)", "6-Piece Dinner Plate Set"],
+        },
+        {
+            "band": (149, 1999, 50),  # drinkware & storage
+            "brands": ["Cello", "Milton", "Borosil", "Treo", "Signoraware"],
+            "items": ["Steel Water Bottle 1L", "6-Piece Glass Tumbler Set", "Glass Storage Container Set",
+                      "3-Piece Casserole Set", "Insulated Lunch Box"],
+        },
+    ],
+    "Fashion": [
+        {
+            "band": (499, 2999, 50),  # western apparel
+            "brands": ["Allen Solly", "Peter England", "Levi's", "U.S. Polo Assn.",
+                       "Roadster", "Wrangler", "Van Heusen"],
+            "items": ["Cotton Casual Shirt", "Slim Fit Jeans", "Cotton T-Shirt",
+                      "Chino Trousers", "Polo T-Shirt"],
+        },
+        {
+            "band": (699, 4999, 50),  # ethnic wear
+            "brands": ["Biba", "W for Woman", "Fabindia", "Libas", "Aurelia", "Manyavar"],
+            "items": ["Anarkali Kurti", "Cotton Kurta Set", "Straight Kurta",
+                      "Palazzo Set", "Nehru Jacket"],
+        },
+        {
+            "band": (799, 6999, 50),  # footwear
+            "brands": ["Nike", "Puma", "Adidas", "Woodland", "Bata", "Campus", "Red Chief", "Sparx"],
+            "items": ["Running Shoes", "Casual Sneakers", "Leather Formal Shoes",
+                      "Sports Sandals", "Canvas Shoes"],
+        },
+        {
+            "band": (399, 3999, 50),  # accessories & bags
+            "brands": ["Wildcraft", "American Tourister", "Skybags", "Fastrack",
+                       "Titan", "Hidesign", "Baggit"],
+            "items": ["Laptop Backpack", "Analog Wrist Watch", "Leather Wallet",
+                      "Sling Bag", "Sunglasses"],
+        },
+    ],
+    "Beauty & Personal Care": [
+        {
+            "band": (149, 1499, 10),  # skincare
+            "brands": ["Mamaearth", "Minimalist", "Dot & Key", "Plum", "WOW Skin Science",
+                       "Himalaya", "The Derma Co"],
+            "items": ["Vitamin C Face Serum", "Sunscreen SPF 50", "Ubtan Face Wash",
+                      "Niacinamide Serum", "Moisturiser 100ml", "Under-Eye Cream"],
+        },
+        {
+            "band": (99, 1999, 10),  # makeup
+            "brands": ["Lakme", "Maybelline", "L'Oreal Paris", "Sugar", "Nykaa", "Colorbar"],
+            "items": ["Matte Lipstick", "Long-Stay Kajal", "Compact Powder",
+                      "Liquid Foundation", "Mascara", "Nail Polish"],
+        },
+        {
+            "band": (99, 999, 10),  # hair & body care
+            "brands": ["Mamaearth", "WOW Skin Science", "L'Oreal Paris", "Dove", "Biotique", "Parachute"],
+            "items": ["Onion Hair Oil", "Anti-Dandruff Shampoo 650ml", "Body Lotion 400ml",
+                      "Hair Serum", "Conditioner 340ml", "Body Wash 250ml"],
+        },
+        {
+            "band": (99, 599, 10),  # fragrance -- budget deo sprays and body perfumes
+            "brands": ["Wild Stone", "Fogg", "Engage", "Denver", "Nivea Men", "Set Wet"],
+            "items": ["Perfume Body Spray", "Deodorant Body Spray", "Pocket Perfume 18ml"],
+        },
+        {
+            "band": (149, 899, 10),  # men's grooming products
+            "brands": ["Beardo", "The Man Company", "Bombay Shaving Company", "Ustraa"],
+            "items": ["Beard Oil", "Beard Wash", "Face Scrub for Men", "Charcoal Face Wash"],
+        },
+    ],
+    "Grocery & Gourmet": [
+        {
+            "band": (60, 899, 5),  # staples
+            "brands": ["Aashirvaad", "Tata Sampann", "Fortune", "India Gate", "Daawat", "Organic Tattva"],
+            "items": ["Whole Wheat Atta 5kg", "Toor Dal 1kg", "Basmati Rice 5kg",
+                      "Sona Masoori Rice 5kg", "Besan 1kg", "Poha 500g"],
+        },
+        {
+            "band": (120, 799, 5),  # cooking oil & ghee
+            "brands": ["Fortune", "Saffola", "Dhara", "Amul", "Patanjali", "Nature Fresh"],
+            "items": ["Refined Sunflower Oil 1L", "Mustard Oil 1L", "Cow Ghee 1L", "Groundnut Oil 1L"],
+        },
+        {
+            "band": (35, 349, 5),  # spices & condiments
+            "brands": ["MDH", "Everest", "Catch", "Tata Sampann", "Aachi"],
+            "items": ["Garam Masala 100g", "Turmeric Powder 200g", "Red Chilli Powder 200g",
+                      "Chana Masala 100g", "Kitchen King Masala 100g"],
+        },
+        {
+            "band": (25, 999, 5),  # packaged & snacks
+            "brands": ["Britannia", "Parle", "Haldiram's", "Nestle", "Amul", "Mother Dairy", "Bikano"],
+            "items": ["Digestive Biscuits", "Namkeen Mix 400g", "Instant Coffee 200g",
+                      "Chocolate Bar (Pack of 5)", "Cheese Slices 200g", "Roasted Almonds 500g"],
+        },
+    ],
+    "Books": [
+        {
+            "band": (99, 1499, 10),
+            "brands": ["Penguin", "HarperCollins", "Rupa", "Westland", "Aleph",
+                       "Bloomsbury", "Scholastic", "Arihant"],
+            "items": ["Fiction Bestseller (Paperback)", "Literary Novel (Paperback)",
+                      "Self-Help Bestseller (Paperback)", "Business & Economics (Paperback)",
+                      "Indian History (Hardcover)", "Biography (Hardcover)",
+                      "Children's Illustrated Book", "Competitive Exam Guide"],
+        },
+    ],
+    "Sports & Fitness": [
+        {
+            "band": (149, 1499, 10),  # fitness accessories
+            "brands": ["HRX", "Boldfit", "Kore", "Aurion", "Amazon Basics", "Cult.sport"],
+            "items": ["6mm Yoga Mat", "Skipping Rope", "Resistance Band Set",
+                      "Gym Training Gloves", "Push-up Bar Set", "Foam Roller"],
+        },
+        {
+            "band": (999, 8999, 100),  # weights & strength equipment
+            "brands": ["Kore", "Cockatoo", "Aurion", "PowerMax", "Lifelong"],
+            "items": ["Adjustable Dumbbell Set 20kg", "Kettlebell 8kg",
+                      "Cast Iron Dumbbell Pair 10kg", "Home Gym Bench"],
+        },
+        {
+            "band": (299, 4999, 50),  # team & racket sports (Kashmir-willow tier, not English willow)
+            "brands": ["Nivia", "Cosco", "Yonex", "Vector X", "SG", "SS", "Li-Ning"],
+            "items": ["Football (Size 5)", "Badminton Racket", "Cricket Bat (Kashmir Willow)",
+                      "Volleyball", "Cricket Leather Ball", "Table Tennis Racket Set"],
+        },
+        {
+            "band": (4990, 18999, 100),  # cardio equipment
+            "brands": ["PowerMax", "Lifelong", "Fitkit", "Cult.sport"],
+            "items": ["Magnetic Exercise Bike", "Manual Treadmill", "Stepper with Resistance Bands"],
+        },
+    ],
+    "Toys & Baby": [
+        {
+            "band": (199, 4999, 50),  # toys & games
+            "brands": ["Funskool", "Hot Wheels", "LEGO", "Mattel", "Hasbro", "Spin Master", "Skillmatics"],
+            "items": ["Building Blocks Set", "Remote Control Car", "Floor Puzzle (36-Piece)",
+                      "Family Board Game", "Action Figure", "Educational Activity Kit",
+                      "Toy Car Set"],
+        },
+        {
+            "band": (199, 1999, 50),  # plush & soft toys
+            "brands": ["Dimpy Stuff", "Miss & Chief", "Wild Republic", "Hallmark"],
+            "items": ["Soft Teddy Bear", "Plush Animal Toy", "Cushion Soft Toy"],
+        },
+        {
+            "band": (99, 999, 10),  # baby consumables
+            "brands": ["MamyPoko", "Pampers", "Huggies", "Johnson's", "Himalaya", "Mamaearth"],
+            "items": ["Diapers XL (Pack of 64)", "Baby Wipes (Pack of 3)", "Baby Lotion 200ml",
+                      "Baby Powder 400g", "Diaper Rash Cream"],
+        },
+        {
+            "band": (349, 3999, 50),  # baby gear
+            "brands": ["Chicco", "LuvLap", "Philips Avent", "R for Rabbit", "Mee Mee"],
+            "items": ["Anti-Colic Feeding Bottle", "Baby Activity Gym", "Baby Carrier",
+                      "Sterilizer & Warmer", "Baby Walker"],
+        },
+    ],
 }
 assert set(CATEGORY_WEIGHTS) == set(CATEGORY_CONFIG), "category weights/config out of sync"
-CATEGORY_CHOICES = list(CATEGORY_WEIGHTS.keys())
-CATEGORY_CHOICE_WEIGHTS = list(CATEGORY_WEIGHTS.values())
+for _cat, _groups in CATEGORY_CONFIG.items():
+    assert _groups and all({"band", "brands", "items"} <= set(g) for g in _groups), _cat
 
 ORDER_STATUSES = ["PLACED", "SHIPPED", "DELIVERED", "CANCELLED", "RETURNED"]
 ORDER_STATUS_WEIGHTS = [15, 20, 45, 12, 8]
@@ -319,21 +537,48 @@ def _skewed_price(rng: random.Random, band: tuple) -> float:
     return float(min(max(stepped, low), high))
 
 
+MIN_PRODUCTS_PER_CATEGORY = 3
+
+
+def _category_sequence(rng: random.Random) -> list:
+    """A deterministic list of N_PRODUCTS category labels whose composition
+    follows CATEGORY_WEIGHTS (largest-remainder apportionment), with a hard
+    floor of MIN_PRODUCTS_PER_CATEGORY so no category -- big-ticket ones
+    especially -- ever ends up with one or two SKUs by chance. Shuffled so
+    product ids interleave categories rather than run in blocks."""
+    total_w = sum(CATEGORY_WEIGHTS.values())
+    exact = {c: w / total_w * N_PRODUCTS for c, w in CATEGORY_WEIGHTS.items()}
+    quota = {c: int(v) for c, v in exact.items()}
+    for c in sorted(exact, key=lambda c: exact[c] - int(exact[c]), reverse=True)[
+        : N_PRODUCTS - sum(quota.values())
+    ]:
+        quota[c] += 1
+    for c in CATEGORY_WEIGHTS:
+        while quota[c] < MIN_PRODUCTS_PER_CATEGORY:
+            donor = max(CATEGORY_WEIGHTS, key=lambda d: quota[d])
+            quota[donor] -= 1
+            quota[c] += 1
+    sequence = [c for c, n in quota.items() for _ in range(n)]
+    rng.shuffle(sequence)
+    return sequence
+
+
 def generate_products(rng: random.Random) -> list:
     used_names: set = set()
     rows = []
+    categories = _category_sequence(rng)
     for i in range(1, N_PRODUCTS + 1):
-        category = rng.choices(CATEGORY_CHOICES, weights=CATEGORY_CHOICE_WEIGHTS)[0]
-        config = CATEGORY_CONFIG[category]
-        brand = rng.choice(config["brands"])
-        item = rng.choice(config["items"])
+        category = categories[i - 1]
+        group = rng.choice(CATEGORY_CONFIG[category])
+        brand = rng.choice(group["brands"])
+        item = rng.choice(group["items"])
 
         name = f"{brand} {item}"
         while name in used_names:
             name = f"{brand} {item} ({rng.choice(['2024', '2025', 'Pro', 'Plus', 'Lite', 'Max'])})"
         used_names.add(name)
 
-        price = _skewed_price(rng, config["band"])
+        price = _skewed_price(rng, group["band"])
         rows.append(
             {
                 "product_id": f"P{i:04d}",
@@ -374,21 +619,37 @@ def generate_orders(rng: random.Random, customers: list) -> list:
 
 
 def generate_order_items(rng: random.Random, orders: list, products: list) -> list:
-    rows = []
-    for i in range(1, N_ORDER_ITEMS + 1):
-        order = rng.choice(orders)
-        product = rng.choice(products)
-        rows.append(
-            {
-                "order_item_id": f"OI{i:07d}",
-                "order_id": order["order_id"],
-                "product_id": product["product_id"],
-                "quantity": rng.choices([1, 2, 3, 4], weights=[55, 28, 12, 5])[0],
-                # Price at time of order -- intentionally independent of
-                # (but close to) the product's current list price.
-                "unit_price": round(product["price"] * rng.uniform(0.92, 1.05), 2),
-            }
-        )
+    """Every order gets at least one line item (a real marketplace order
+    always has one), then the remaining items -- keeping the total at
+    exactly N_ORDER_ITEMS -- are distributed randomly across orders, so
+    baskets still vary in size. No filler rows: the same 5000 items, just
+    guaranteed to cover every order first.
+
+    Which product a line item is for is weighted down for pricier items
+    (weight ~ price**-0.3): an everyday ~100-rupee staple sells many more
+    units than a 60,000-rupee phone, so most baskets stay small and the
+    order-value distribution keeps its realistic shape even though the
+    catalogue now has a proper big-ticket tail. Quantity leans to 1-2."""
+    pick_weights = [1.0 / (max(p["price"], 1.0) ** 0.3) for p in products]
+    seq = 0
+
+    def make_item(order: dict) -> dict:
+        nonlocal seq
+        seq += 1
+        product = rng.choices(products, weights=pick_weights)[0]
+        return {
+            "order_item_id": f"OI{seq:07d}",
+            "order_id": order["order_id"],
+            "product_id": product["product_id"],
+            "quantity": rng.choices([1, 2, 3, 4], weights=[55, 28, 12, 5])[0],
+            # Price at time of order -- intentionally independent of (but
+            # close to) the product's current list price.
+            "unit_price": round(product["price"] * rng.uniform(0.92, 1.05), 2),
+        }
+
+    rows = [make_item(order) for order in orders]
+    for _ in range(max(0, N_ORDER_ITEMS - len(orders))):
+        rows.append(make_item(rng.choice(orders)))
     return rows
 
 

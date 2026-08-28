@@ -90,10 +90,18 @@ analytical SQL.
 warehouse — KPIs, revenue/customer/order/payment analytics, pipeline
 health, and reconciliation drill-down — see below.
 
-**Phase 7 — NL2SQL / "Ask QueryPilot" (this state):** a schema-aware
+**Phase 7 — NL2SQL / "Ask QueryPilot":** a schema-aware
 natural-language-to-SQL layer added on top of the stable warehouse and
 dashboard, with its own independent SQL-safety and read-only-execution
 boundaries and support for multiple LLM providers — see below.
+
+**Phase 8 — India localization & premium dashboard (this state):** the
+synthetic dataset was localized to an Indian digital-commerce marketplace
+(Indian names/cities/states, a plausible retail product catalogue with
+per-line INR price bands, UPI-led payments), `customers.country` became
+`customers.state`, and the Streamlit dashboard was reworked into an
+"India Payments & Commerce Analytics" product with INR (lakh/crore)
+formatting.
 
 Not yet implemented: anything beyond what's listed above (no
 Airflow/Kafka/Spark/dbt/Kubernetes/auth — deliberately out of scope for
@@ -107,13 +115,15 @@ chosen because it gives the pipeline real relational integrity, enums, and
 numeric/date rules to validate in later phases.
 
 **India localization:** customers have Indian names, a `city`, and a
-`state` (an Indian state or union territory); the product catalogue uses
-plausible Indian retail brands/items across marketplace categories
-(Grocery, Fashion, Electronics, Smartphones, Mobile Accessories,
-Appliances, …), each with its own realistic INR price band; all prices and
-amounts are in **INR** with realistic per-category ranges; `payment_method`
-is UPI-dominant alongside `CREDIT_CARD` / `DEBIT_CARD` / `NET_BANKING` /
-`WALLET` / `COD`.
+`state` (an Indian state or union territory); the product catalogue is
+built from *product-line groups* — each pairs brands that actually make a
+kind of thing with the items they make and its own tight INR price band
+(so a phone can be priced like a flagship but an accessory never can) —
+across marketplace categories (Grocery, Fashion, Electronics,
+Smartphones, Mobile Accessories, Large Appliances, …), with a
+deterministic quota that guarantees every category is represented; all
+prices and amounts are in **INR**; `payment_method` is UPI-dominant
+alongside `CREDIT_CARD` / `DEBIT_CARD` / `NET_BANKING` / `WALLET` / `COD`.
 
 **Why synthetic data:** a public dataset rarely maps cleanly onto exactly
 these five entities and gives no control over data-quality scenarios. The
@@ -355,7 +365,7 @@ documents every variable above with no real values filled in.
 │   ├── curated/                # curated Parquet + transformation report per batch (gitignored)
 │   └── warehouse/               # warehouse load report per batch (gitignored)
 ├── scripts/
-│   └── generate_dataset.py   # synthetic dataset generator (Faker, seeded)
+│   └── generate_dataset.py   # synthetic dataset generator (stdlib only, seeded)
 ├── src/
 │   ├── ingestion/             # reads raw extracts, lands immutable batches
 │   ├── validation/            # entity/referential/temporal rules, accepted+rejected output
@@ -380,7 +390,7 @@ documents every variable above with no real values filled in.
 ├── config/
 │   └── settings.py              # environment-driven configuration
 ├── requirements.txt              # pipeline + dashboard runtime dependencies
-├── requirements-dev.txt          # generation-time-only (Faker)
+├── requirements-dev.txt          # dev-only tooling (currently empty; generator is stdlib-only)
 ├── .streamlit/
 │   └── config.toml                # dashboard theme (dark, restrained accent color)
 ├── .env.example
