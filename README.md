@@ -1,233 +1,355 @@
-# QueryPilot
+# QueryPilot — Data Engineering Platform
 
-**A portfolio-grade data engineering platform for an India-focused digital-commerce
-and payments analytics warehouse.**
-
-QueryPilot generates a synthetic Indian marketplace dataset, runs it through an
-explicit batch pipeline — ingestion, data-quality validation, transformation,
-curated Parquet, PostgreSQL warehouse — and exposes it through a read-only
-Streamlit analytics dashboard and a schema-aware, security-hardened
+A **local-first data engineering pipeline** for a synthetic Indian digital-commerce
+and payments marketplace. QueryPilot generates marketplace data, ingests it,
+validates and cleans it, transforms it, stores the curated result as Parquet, loads
+a PostgreSQL warehouse, runs data-quality and reconciliation checks, and serves the
+result through analytical SQL, a read-only Streamlit dashboard, and a schema-aware
 natural-language-to-SQL layer ("Ask QueryPilot").
 
-Everything runs locally. There is no Spring Boot, no Angular, no auth service, and
-no cloud dependency. The design goal is to demonstrate credible data-engineering
-fundamentals end to end without introducing infrastructure the project does not
-need.
+Everything runs on one machine. No cloud account, no managed services, no object
+storage. All monetary values are Indian rupees (INR).
 
-- **Language / processing:** Python, pandas, PyArrow
-- **Warehouse:** PostgreSQL (SQLAlchemy + psycopg2)
-- **Dashboard:** Streamlit (Altair charts, bundled)
-- **NL2SQL:** provider-agnostic LLM generation (Anthropic / Gemini / Ollama / OpenRouter) + `sqlglot` AST safety gate
-- **Tests:** 236 passing `pytest` tests
-- **Currency:** all monetary values are Indian rupees (INR), formatted with lakh/crore conventions
+This repository is the **Python data engineering** project — a self-contained
+pipeline with no web framework, no frontend app, and no auth service.
 
----
+### Two ways to run the pipeline
 
-## Key Capabilities
+| | **V1 — the baseline** | **V2 — additive enhancement** |
+|---|---|---|
+| Runtime | plain Python | Apache Airflow (Docker) + PySpark |
+| Orchestration | four CLI commands, run by hand | one Airflow DAG |
+| Transformation engine | pandas (`src/transformation/`) | PySpark (`src/spark_transform/`) |
+| Storage | local filesystem `data/` | local filesystem `data/` |
+| Warehouse | PostgreSQL | the **same** PostgreSQL (same loader, same schema) |
+| Dependencies | `requirements.txt` | Airflow + PySpark, **inside the Docker image only** |
 
-| Area | What it does |
-|---|---|
-| **Synthetic dataset** | Deterministic, seeded generator (`scripts/generate_dataset.py`, standard library only) producing five related entities — customers, products, orders, order_items, payments — with Indian names/cities/states, an INR-priced catalogue, a UPI-led payment mix, and ~4% deliberately injected data-quality defects. |
-| **Batch ingestion** | Structural (shape-only) validation, then immutable landing into a batch-partitioned raw zone with a per-run JSON manifest. One `batch_id` per run, shared across all entities. |
-| **Data-quality validation** | Entity, referential (foreign-key), and temporal rules. Valid and rejected rows are written separately, plus a machine-readable `quality_report.json` per batch. Rejections are an expected outcome, not a pipeline failure. |
-| **Transformation** | Type casting, `order_items.line_total`, and an orders-level reconciliation between the source total and the total implied by line items — the source value is never overwritten. Output is curated Parquet per batch. |
-| **PostgreSQL warehouse** | Idempotent `INSERT ... ON CONFLICT DO UPDATE` loading in dependency order inside one transaction, an append-only `pipeline_batches` lineage ledger, and post-load reconciliation checks (row counts, PK/FK integrity, monetary totals) before commit. |
-| **Analytics dashboard** | Read-only Streamlit product over the warehouse: KPIs, revenue/customer/order/payment analytics, pipeline health, and reconciliation drill-down. DB-session-level read-only enforcement. |
-| **NL2SQL — "Ask QueryPilot"** | Plain-English question → schema-grounded LLM SQL → **static AST validation** → **bounded read-only execution**. The LLM only ever proposes a string; it is never the security boundary. |
+**V2 is additive.** It reuses V1's ingestion, validation, curated-data contract,
+warehouse loader, and quality checks. V1 remains independently runnable and does not
+import Airflow or PySpark. `main` holds V1; V2 lives on
+`feature/airflow-pyspark-pipeline` and is **not merged**.
 
 ---
 
-## Architecture
+## Key Features
 
-All diagrams in this section describe the **implemented V1 architecture**. The
-additive [V2 pipeline](#v2--airflow-orchestrated-pyspark-pipeline-optional-additive)
-(Airflow + PySpark) has its own section; genuinely unbuilt ideas are confined to
-the [Future Roadmap](#future-roadmap) and explicitly labelled.
+| Group | Feature | Where |
+|---|---|---|
+| **Data engineering** | Seeded, deterministic synthetic dataset (5 related entities, stdlib only) | `scripts/generate_dataset.py` |
+| | CSV ingestion into an immutable, `batch_id`-partitioned raw zone + per-run manifest | `src/ingestion/` |
+| | Structural (shape-only) checks before landing | `src/ingestion/reader.py`, `schemas.py` |
+| | Idempotent, "refuse to overwrite" writers at every stage | all `src/*/` |
+| **Data quality** | Entity, referential (FK), and temporal validation rules | `src/validation/rules.py` |
+| | Accepted vs rejected rows written separately; per-batch `quality_report.json` | `src/validation/` |
+| | Order-total reconciliation (`source` vs sum of line items, tolerance 0.01) | `src/transformation/business.py` |
+| | `transformation_report.json` per batch (reconciled / non-reconciled order ids) | `src/transformation/report.py` |
+| | Pre-commit warehouse checks: row counts, PK/FK, unexpected nulls, monetary totals | `src/warehouse/quality.py` |
+| **Storage / warehouse** | Curated Parquet, one `data.parquet` per entity per batch (PyArrow) | `src/transformation/writer.py` |
+| | PostgreSQL warehouse: 5 entity tables + `pipeline_batches` lineage ledger | `sql/ddl/`, `src/warehouse/` |
+| | Idempotent `INSERT … ON CONFLICT DO UPDATE` loading in dependency order, one transaction | `src/warehouse/loader.py` |
+| **Analytics** | 11 read-only analytical SQL queries | `sql/analytics/` |
+| | Read-only Streamlit dashboard (KPIs, revenue, orders/payments, data-quality drill-down) | `dashboard/` |
+| | NL2SQL: NL question → LLM SQL → static AST validation → bounded read-only execution | `src/nl2sql/` |
+| | DB-session-level read-only enforcement for the dashboard and NL2SQL | `src/warehouse/db.py` |
+| **V2 orchestration / processing** | Airflow DAG `querypilot_data_pipeline` (TaskFlow API, LocalExecutor) | `orchestration/dags/` |
+| | PySpark transformation: explicit schemas, referential joins, filters, aggregation | `src/spark_transform/` |
+| | Local Airflow stack via Docker Compose (webserver, scheduler, metadata DB) | `docker-compose.airflow.yml` |
+| | Standalone Spark CLI (run the V2 transform without Airflow) | `python -m src.spark_transform.pipeline` |
+| **Testing** | `pytest` suite | `tests/` |
+| | **243 passed, 1 skipped** (236 V1 + 7 PySpark; the Airflow DAG test runs in-container) | verified |
 
-Consistent terminology used throughout:
+---
 
-| Term | Meaning |
-|---|---|
-| **Incoming CSV** | `data/raw/_incoming/<entity>/<entity>.csv` — committed source-system extracts |
-| **Raw zone** | `data/raw/<entity>/batch_id=<id>/` — immutable landed copy |
-| **Validated zone** | `data/validated/batch_id=<id>/` — accepted rows |
-| **Rejected zone** | `data/rejected/batch_id=<id>/` — rejected rows + `quality_report.json` |
-| **Curated zone** | `data/curated/batch_id=<id>/<entity>/data.parquet` — typed, business-transformed Parquet |
-| **Warehouse** | PostgreSQL: `pipeline_batches` + `customers` / `products` / `orders` / `order_items` / `payments` |
+## V1 vs V2
 
-### Overall Architecture
+### V1 — the existing pipeline
 
-The batch pipeline is a one-directional data flow (solid arrows). The dashboard and
-NL2SQL are read-only consumers of the warehouse (dashed arrows = query flow). Both
-consumers ultimately read the same PostgreSQL warehouse and nothing upstream of it.
+Four independent command-line stages. Each reads the previous stage's zone on the
+local filesystem and writes the next. Nothing is rewritten in V2; this is the
+baseline.
 
 ```mermaid
 flowchart TD
-    GEN["Synthetic Indian marketplace dataset<br/>scripts/generate_dataset.py — seeded, deterministic"]
-
-    subgraph PIPE["Batch data engineering pipeline — Python, batch_id per run"]
-        direction TB
-        INC["Incoming CSV<br/>data/raw/_incoming/"]
-        RAW["Raw zone — immutable<br/>data/raw/entity/batch_id=ID/"]
-        VAL["Validated zone<br/>data/validated/batch_id=ID/"]
-        CUR["Curated Parquet zone<br/>data/curated/batch_id=ID/"]
-        INC -->|"python -m src.ingestion.pipeline"| RAW
-        RAW -->|"python -m src.validation.pipeline"| VAL
-        VAL -->|"python -m src.transformation.pipeline"| CUR
-    end
-
-    WH[("PostgreSQL warehouse<br/>pipeline_batches + 5 entity tables")]
-
-    subgraph CONSUME["Read-only consumption layer"]
-        direction TB
-        SQLA["sql/analytics/*.sql<br/>11 analytical queries"]
-        DASH["Streamlit dashboard<br/>dashboard/app.py"]
-        NL["Ask QueryPilot — NL2SQL<br/>src/nl2sql/"]
-    end
-
-    USER(["User"])
-
-    GEN --> INC
-    CUR -->|"python -m src.warehouse.pipeline<br/>upsert + lineage + reconciliation"| WH
-
-    WH -. "query flow" .-> SQLA
-    SQLA -. "query flow" .-> DASH
-    WH -. "validated SQL only" .-> NL
-    USER --> DASH
-    DASH -->|"Ask QueryPilot tab"| NL
+    GEN["scripts/generate_dataset.py<br/>seeded synthetic dataset"]
+    GEN --> RAWIN["Incoming CSV<br/>data/raw/_incoming/"]
+    RAWIN -->|"python -m src.ingestion.pipeline"| RAW["Raw zone (immutable)<br/>data/raw/entity/batch_id=ID/"]
+    RAW -->|"python -m src.validation.pipeline --batch-id ID"| VAL["Validated zone<br/>data/validated/batch_id=ID/"]
+    VAL -->|"python -m src.transformation.pipeline --batch-id ID<br/>(pandas)"| CUR["Curated Parquet<br/>data/curated/batch_id=ID/entity/data.parquet"]
+    CUR -->|"python -m src.warehouse.pipeline --batch-id ID"| PG[("PostgreSQL warehouse<br/>5 tables + pipeline_batches")]
+    PG --> SQLA["sql/analytics/*.sql"]
+    SQLA --> DASH["Streamlit dashboard<br/>dashboard/app.py"]
+    PG -. "read-only" .-> NL["NL2SQL — Ask QueryPilot"]
 ```
 
-### Data Engineering Pipeline
+### V2 — Airflow + PySpark
 
-Four independent command-line stages, each reading the previous stage's zone and
-writing the next. Every writer refuses to overwrite an existing batch, so re-running
-is always safe and produces a new, independent batch. Sidecar JSON reports are
-written at every stage; the `pipeline_batches` table in PostgreSQL is the permanent
-load ledger.
+The same logical pipeline, orchestrated by one Airflow DAG, with the
+transformation-heavy step performed by PySpark. **Airflow = orchestration. PySpark =
+transformation. Local filesystem = storage. PostgreSQL = warehouse.**
 
 ```mermaid
 flowchart TD
-    GEN["scripts/generate_dataset.py<br/>500 customers · 100 products · 2000 orders<br/>5000 order_items · 2200 payments · ~4% injected defects"]
-    GEN --> INC["Incoming CSV<br/>data/raw/_incoming/entity/entity.csv<br/>(committed to git)"]
+    subgraph DAG["Airflow DAG: querypilot_data_pipeline (LocalExecutor)"]
+        direction TB
+        T1["generate_or_stage_raw"] --> T2["validate"]
+        T2 --> T3["pyspark_transform"]
+        T3 --> T4["write_curated"]
+        T4 --> T5["load_postgres"]
+        T5 --> T6["quality_check"]
+    end
 
-    INC --> ING{{"Ingestion<br/>src/ingestion/pipeline.py"}}
-    ING --> SHAPE["Schema expectations check<br/>src/ingestion/schemas.py<br/>file exists · non-empty · required columns present"]
-    SHAPE --> RAW["Raw zone — immutable<br/>data/raw/entity/batch_id=ID/entity.csv"]
-    ING --> MAN["Run manifest<br/>data/raw/_batches/ID.json<br/>source file · row count · status · columns"]
+    T1 -. "reuses" .-> R1["src.ingestion.pipeline.ingest_all (V1)"]
+    T2 -. "reuses" .-> R2["src.validation.pipeline.run_validation (V1)"]
+    T3 -. "PySpark" .-> R3["src.spark_transform.run_spark_transform"]
+    T4 -. "reuses V1 writer" .-> R4["src.spark_transform.promote_curated"]
+    T5 -. "reuses" .-> R5["src.warehouse.pipeline.run_warehouse_load (V1)"]
+    T6 -. "reuses" .-> R6["09_order_reconciliation_rate.sql (V1)"]
 
-    RAW --> VALP{{"Validation<br/>src/validation/pipeline.py --batch-id ID"}}
-    VALP --> RULES["Entity + referential + temporal rules<br/>src/validation/rules.py"]
-    RULES --> VOK["Validated zone — accepted rows<br/>data/validated/batch_id=ID/entity.csv"]
-    RULES --> VREJ["Rejected zone — quarantined rows<br/>data/rejected/batch_id=ID/entity.csv"]
-    RULES --> QR["quality_report.json<br/>row totals · pass rate · rejection reason counts"]
+    R4 --> CUR[("data/curated/ (V1 contract)")]
+    R5 --> PG[("PostgreSQL warehouse (V1, unchanged)")]
 
-    VOK --> TRP{{"Transformation<br/>src/transformation/pipeline.py --batch-id ID"}}
-    TRP --> TYPES["Type casting + business rules<br/>src/transformation/types.py · business.py<br/>line_total · order-total reconciliation"]
-    TYPES --> CUR["Curated Parquet zone<br/>data/curated/batch_id=ID/entity/data.parquet"]
-    TRP --> TRPT["transformation_report.json<br/>row counts · orders reconciled / not reconciled"]
+    classDef spark fill:#3a2f0b,stroke:#fab219,color:#fff
+    class T3,T4,R3 spark
+```
 
-    CUR --> WLP{{"Warehouse loader<br/>src/warehouse/pipeline.py --batch-id ID"}}
-    WLP --> SCHEMA["Apply DDL idempotently<br/>src/warehouse/schema.py from sql/ddl/*.sql"]
-    SCHEMA --> UPSERT["Upsert in dependency order, one transaction<br/>ON CONFLICT DO UPDATE · SCD Type 1"]
-    UPSERT --> QCHK["Post-load reconciliation<br/>row counts · PK/FK · nulls · monetary totals"]
-    QCHK --> PG[("PostgreSQL warehouse")]
-    WLP --> LEDGER[("pipeline_batches ledger<br/>IN_PROGRESS to SUCCESS in-txn · FAILED written separately")]
+V2 changes exactly one engine (transformation: pandas → Spark) and adds one driver
+(Airflow). Ingestion, validation, the curated-data contract, the warehouse loader,
+the warehouse schema, the quality checks, the dashboard, and NL2SQL are all reused
+**unchanged**.
 
-    classDef zone fill:#0d3b66,stroke:#3987e5,color:#fff
+---
+
+## Overall Architecture
+
+Raw data flows one direction. The dashboard and NL2SQL are read-only consumers of
+the warehouse. **The V1 path and the V2 path converge at the curated-data contract
+and again at the warehouse** — everything downstream is identical.
+
+```mermaid
+flowchart TD
+    GEN["Synthetic marketplace dataset<br/>scripts/generate_dataset.py"]
+    GEN --> ING["Ingestion (Python)<br/>src/ingestion/ — immutable raw batch"]
+    ING --> VAL["Validation (Python)<br/>src/validation/ — accepted / rejected + quality_report.json"]
+
+    VAL --> V1T["V1: transformation (pandas)<br/>src/transformation/"]
+    VAL --> V2T["V2: transformation (PySpark)<br/>src/spark_transform/"]
+
+    V1T --> CUR[("Curated Parquet — one contract<br/>data/curated/batch_id=ID/entity/data.parquet")]
+    V2T --> CUR
+
+    CUR --> WH["Warehouse loader (Python, V1)<br/>src/warehouse/ — idempotent upsert + lineage"]
+    WH --> PG[("PostgreSQL warehouse<br/>5 entity tables + pipeline_batches")]
+
+    PG --> ASQL["Analytical SQL<br/>sql/analytics/*.sql"]
+    ASQL --> DASH["Streamlit dashboard<br/>dashboard/app.py"]
+    PG -. "read-only" .-> NL["NL2SQL — Ask QueryPilot<br/>src/nl2sql/"]
+
+    AF["Apache Airflow (V2 only)<br/>DAG: querypilot_data_pipeline"]
+    AF -. "orchestrates the V2 path" .-> ING
+    AF -.-> VAL
+    AF -.-> V2T
+    AF -.-> WH
+
+    classDef v2 fill:#3a2f0b,stroke:#fab219,color:#fff
+    classDef opt stroke-dasharray: 4 3
+    class V2T,AF v2
+    class AF opt
+```
+
+- **V1 path:** run the four `python -m src.<stage>.pipeline` commands directly. No
+  Airflow, no Spark, no Docker.
+- **V2 path:** trigger the Airflow DAG; `pyspark_transform` replaces the pandas
+  transformation; everything else is the same code.
+
+---
+
+## Airflow Architecture
+
+Airflow is the **workflow orchestrator** for V2 — it schedules, sequences, retries,
+and surfaces the status of the pipeline steps. It does **not** perform the
+transformation itself (PySpark does) and it does **not** replace any V1 logic; every
+task is a thin call into code that already exists in `src/` and is already tested.
+
+```mermaid
+flowchart TD
+    S(["Manual trigger<br/>(schedule = None)"]) --> A["generate_or_stage_raw<br/>ingest_all() → batch_id"]
+    A -->|"batch_id via XCom"| B["validate<br/>run_validation(batch_id)"]
+    B --> C["pyspark_transform<br/>run_spark_transform(batch_id) — Spark"]
+    C --> D["write_curated<br/>promote_curated(batch_id)"]
+    D --> E["load_postgres<br/>run_warehouse_load(batch_id)"]
+    E --> F["quality_check<br/>assert pipeline_batches = SUCCESS + reconciliation SQL"]
+    F --> G(["DAG run: success"])
+
+    classDef spark fill:#3a2f0b,stroke:#fab219,color:#fff
+    class C,D spark
+```
+
+**Actual DAG configuration** (`orchestration/dags/querypilot_data_pipeline.py`):
+
+| Setting | Value |
+|---|---|
+| `dag_id` | `querypilot_data_pipeline` |
+| API | TaskFlow API (`@dag` / `@task`) |
+| `schedule` | `None` (manual trigger only) |
+| `catchup` | `False` |
+| `max_active_runs` | `1` |
+| `default_args` | `retries=1`, `retry_delay=1 minute` |
+| `start_date` | `2026-01-01` (UTC) |
+| `tags` | `querypilot`, `v2`, `pyspark` |
+| Executor | `LocalExecutor` |
+| `batch_id` propagation | returned by `generate_or_stage_raw`, passed as each task's argument via XCom |
+
+Task → code mapping (nothing reimplemented):
+
+| Task | Calls |
+|---|---|
+| `generate_or_stage_raw` | `src.ingestion.pipeline.ingest_all()` — V1 |
+| `validate` | `src.validation.pipeline.run_validation()` — V1 |
+| `pyspark_transform` | `src.spark_transform.pipeline.run_spark_transform()` — **PySpark** |
+| `write_curated` | `src.spark_transform.pipeline.promote_curated()` — writes via V1's writer/report |
+| `load_postgres` | `src.warehouse.pipeline.run_warehouse_load()` — V1, unchanged |
+| `quality_check` | asserts `pipeline_batches.status = SUCCESS`; runs `sql/analytics/09_order_reconciliation_rate.sql` — V1 |
+
+---
+
+## PySpark Architecture
+
+PySpark exists in V2 to perform the **transformation-heavy step** — the part with
+joins across all five entities, cross-entity filtering, and a group-by aggregation —
+using an explicit-schema DataFrame engine rather than pandas. It is a genuine Spark
+job, not an import-Spark-then-go-to-pandas shim.
+
+Spark runs **locally** (`local[*]` master, one process). This is not a cluster and
+makes no distributed-scale claims — the dataset is a few thousand rows. The value
+here is the engineering pattern: declared schemas, relational joins, and
+partition-aware processing.
+
+```mermaid
+flowchart TD
+    IN["data/validated/batch_id=ID/entity.csv<br/>(V1 accepted rows, all strings)"]
+    IN --> RD["spark.read.csv with explicit StructType<br/>src/spark_transform/schemas.py — no inferSchema"]
+    RD --> CAST["Type casting<br/>to_date · cast('int') · cast('double')"]
+    CAST --> FILT["Numeric-domain filters<br/>quantity and unit_price positive · amount and price non-negative · valid enums"]
+    FILT --> JOIN["Referential left-semi joins<br/>orders to customers · order_items to orders and products · payments to orders"]
+    JOIN --> DER["Derived column<br/>line_total = round(quantity * unit_price, 2)"]
+    DER --> AGG["Group-by aggregation<br/>sum(line_total) per order_id to calculated_total_amount"]
+    AGG --> REC["Reconciliation<br/>difference = source_total minus calculated_total<br/>reconciled when abs(difference) within 0.01"]
+    REC --> STG["Spark staging Parquet<br/>data/spark_staging/batch_id=ID/entity.parquet"]
+    STG --> PROMO["promote_curated — V1's PyArrow single-file writer + report<br/>data/curated/batch_id=ID/entity/data.parquet"]
+
+    classDef spark fill:#3a2f0b,stroke:#fab219,color:#fff
+    class RD,CAST,FILT,JOIN,DER,AGG,REC,STG spark
+```
+
+### The Spark job, precisely
+
+`src/spark_transform/transform.py` (`transform_batch`) does, in order:
+
+1. **Explicit `StructType` schemas** per entity — every column declared, `inferSchema`
+   never used.
+2. **CSV reads** of the V1 validated output.
+3. **Type casting** — `F.to_date(...)`, `cast("int")`, `cast("double")`.
+4. **Numeric-domain filters** — `quantity > 0`, `unit_price > 0`, `amount >= 0`,
+   `price >= 0`, valid status / method / payment-status enums.
+5. **Referential `left_semi` joins** — orders filtered to surviving customers; then
+   `order_items` filtered to surviving orders **and** surviving products; then
+   payments filtered to surviving orders. The curated set is internally consistent
+   by construction.
+6. **Derived column** — `order_items.line_total = round(quantity * unit_price, 2)`.
+7. **Group-by aggregation** — `groupBy("order_id").agg(round(sum("line_total"), 2))`,
+   joined back onto orders to produce `calculated_total_amount`,
+   `total_amount_difference`, and the boolean `total_amount_reconciled`
+   (tolerance `0.01`, identical to V1's `src/transformation/business.py`).
+
+### Why the final write is not a pure Spark sink
+
+V1's curated contract is **one `data.parquet` file per entity** — not a Spark
+part-file directory. So `pyspark_transform` writes each transformed DataFrame to a
+neutral **staging** Parquet (`data/spark_staging/`), and a separate step,
+`write_curated` (`promote_curated`), reads that staging Parquet with pandas and
+writes the canonical single-file layout **using V1's own
+`src/transformation/writer.py` and `src/transformation/report.py`** (PyArrow).
+
+This is deliberate and stated plainly: **the final single-file promotion uses the
+existing V1-compatible writer / PyArrow path after the Spark transformation.** It is
+not a distributed Spark sink. It exists so the warehouse loader and dashboard need
+zero changes — and, verified, a V2 curated batch is value-identical to V1's for the
+same input.
+
+---
+
+## Data Quality
+
+Data quality is enforced at three points and surfaced in the dashboard's **Data
+Quality** tab. V2 uses the **same** validation and warehouse checks as V1.
+
+```mermaid
+flowchart TD
+    RAW["Raw / validated data"]
+    RAW --> EV["Entity validation<br/>required fields · PK uniqueness · enum/domain · numeric sign · date validity"]
+    RAW --> RV["Referential validation<br/>orders→customers · order_items→orders/products · payments→orders<br/>(checked against ACCEPTED parents)"]
+    RAW --> TV["Temporal validation<br/>no future dates · order_date not before signup · payment_date not before order_date"]
+
+    EV --> SPLIT{"per-entity split"}
+    RV --> SPLIT
+    TV --> SPLIT
+    SPLIT -->|"passes all rules"| ACC["Validated zone<br/>data/validated/"]
+    SPLIT -->|"breaks a rule"| REJ["Rejected zone + quality_report.json<br/>data/rejected/"]
+
+    ACC --> RECON["Transformation reconciliation<br/>source_total_amount vs sum of line_total<br/>→ transformation_report.json"]
+    RECON --> POST["Warehouse post-load checks (pre-commit)<br/>row counts vs curated · PK/FK · unexpected nulls · monetary totals"]
+    POST --> DONE{"all checks pass?"}
+    DONE -->|"yes"| OK["pipeline_batches.status = SUCCESS"]
+    DONE -->|"no"| FAIL["transaction rolls back<br/>pipeline_batches.status = FAILED"]
+
     classDef reject fill:#5c1a1a,stroke:#d03b3b,color:#fff
-    class RAW,VOK,CUR zone
-    class VREJ reject
+    class REJ,FAIL reject
 ```
 
-Zone roles at a glance:
+Actual mechanisms:
 
-- **Raw** — bytes as received, only structurally checked, never value-inspected, never mutated.
-- **Validated** — every row here passed all data-quality rules; downstream stages consume this and never re-run validation.
-- **Curated** — typed columns, `line_total`, and reconciliation columns; the analytical hand-off shape.
-- **Warehouse** — current-state (SCD Type 1) entity tables plus the append-only batch ledger.
-
-### NL2SQL Architecture & Security
-
-"Ask QueryPilot" turns a plain-English question into a real result set. Its
-strongest engineering property is that **the LLM never provides the security
-boundary** — it only produces a candidate string. Two independent gates stand
-between that string and the database: a static AST validator (`sqlglot`) and a
-DB-session-level read-only connection. SQL that fails validation is **never sent to
-PostgreSQL** — `execute_sql()` is not called at all in that branch.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor U as User
-    participant UI as Ask QueryPilot tab / nl2sql_ui.py
-    participant G as Length + throttle guards
-    participant O as NL2SQL orchestrator / _run_pipeline
-    participant D as Schema discovery / cached
-    participant P as LLM provider
-    participant V as SQL validator / sqlglot AST
-    participant X as Read-only executor
-    participant PG as PostgreSQL / read-only session
-
-    U->>UI: submit question
-    UI->>G: validate_question_length (max 500 chars)
-    UI->>G: throttle check (5 requests / 60s / session)
-    G-->>UI: allowed
-    UI->>O: _run_pipeline(engine, question)
-    O->>D: discover_schema()
-    D-->>O: SchemaInfo (tables, PK/FK, CHECK constraints)
-    O->>O: build_schema_context() to plain text
-    O->>P: generate_sql(question, schema_context)
-    P-->>O: SQLGenerationResult (sql, explanation, tables_used)
-    Note over O,V: LLM output is a candidate string only, not trusted
-    O->>V: validate_sql(candidate, schema)
-    alt validation fails
-        V-->>O: is_valid = false, errors
-        O-->>UI: VALIDATION_FAILED, execute_sql() NOT called
-        UI-->>U: shows errors + generated SQL (not executed)
-    else validation passes
-        V-->>O: SQLValidationResult (is_valid = true, normalized_sql)
-        O->>X: execute_sql(validation_result, max_rows=200, timeout=20s)
-        X->>PG: SET SESSION READ ONLY + SET LOCAL statement_timeout
-        X->>PG: run normalized_sql (streamed, row-capped)
-        PG-->>X: rows
-        X-->>O: SQLExecutionResult (success, columns, rows, truncated)
-        O-->>UI: SUCCESS
-        UI-->>U: result table + explanation + validated SQL
-    end
-```
-
-The non-negotiable ordering:
-
-```mermaid
-flowchart LR
-    LLM["LLM-generated SQL string<br/>(candidate only)"] --> GATE{{"validate_sql() — sqlglot AST walk<br/>single read-root statement only<br/>rejects INSERT/UPDATE/DELETE/DDL,<br/>DML hidden in CTEs, SELECT INTO,<br/>admin functions such as pg_sleep, lo_import, dblink,<br/>tables not in the warehouse schema"}}
-    GATE -->|"is_valid = false"| STOP["Rejected — never executed"]
-    GATE -->|"is_valid = true"| RO["Read-only execution<br/>SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY<br/>+ statement_timeout + client-side row cap"]
-    RO --> PG[("PostgreSQL")]
-
-    classDef stop fill:#5c1a1a,stroke:#d03b3b,color:#fff
-    class STOP stop
-```
-
-Defence in depth, deliberately layered:
-
-1. **Length guard** — question over 500 chars rejected before any provider call.
-2. **Per-session throttle** — 5 generation requests / 60s, tracked in Streamlit session state (`dashboard/nl2sql_ui.py`).
-3. **Structured generation** — every provider must return `{ sql, explanation, tables_used }`; the shared system prompt asks for read-only SQL, but a prompt is not enforcement.
-4. **Static AST validation** (`src/nl2sql/validation.py`) — parses with `sqlglot`, accepts only a single `SELECT` / `UNION` / `EXCEPT` / `INTERSECT` root, walks the whole tree for disallowed nodes and functions, and (when given the schema) rejects hallucinated tables.
-5. **Type-level trust boundary** — `execute_sql()` accepts only a `SQLValidationResult` with `is_valid=True`, never a raw string.
-6. **DB-session read-only enforcement** (`src/warehouse/db.get_readonly_engine`) — every connection runs `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY`; the same guarantee the dashboard itself uses.
-7. **Bounded execution** — server-side `statement_timeout` and client-side row cap (`fetchmany`, not a spliced `LIMIT`).
+- **Validation rules** (`src/validation/rules.py`) — entity, referential, temporal.
+- **Accepted vs rejected records** — written to separate zones; every rejected row
+  keeps its full data plus every rule code it violated.
+- **`quality_report.json`** per batch — total / valid / rejected rows, pass rate,
+  rejection-reason counts.
+- **Order-total reconciliation** — transformation compares the recorded order total
+  to the sum of its (accepted) line items; the gap and a boolean flag are written to
+  the curated `orders` table and to `transformation_report.json`. Mismatches arise
+  naturally when validation quarantines some of an order's line items.
+- **Warehouse post-load checks** (`src/warehouse/quality.py`) — run inside the load
+  transaction, before commit: row counts against curated, primary-key uniqueness, no
+  orphan foreign keys, no unexpected nulls, monetary-total agreement.
+- **`pipeline_batches` status** — `IN_PROGRESS` → `SUCCESS` in the same transaction;
+  `FAILED` written separately after a rollback. Only `SUCCESS` or `FAILED` ever
+  persist.
 
 ---
 
-## Data Model
+## Storage and Warehouse
 
-The warehouse schema is defined in `sql/ddl/*.sql` and applied idempotently by the
-loader on every run. Every entity table carries a `batch_id` foreign key into
-`pipeline_batches` — that column always reflects the batch that most recently
-produced the row's current state, while `pipeline_batches` retains the full history
-of every load attempt.
+### Local filesystem zones
+
+| Path | Contents |
+|---|---|
+| `data/raw/_incoming/` | committed source CSVs (so the repo runs without regenerating) |
+| `data/raw/<entity>/batch_id=<id>/` | immutable landed raw copy + `data/raw/_batches/<id>.json` manifest |
+| `data/validated/batch_id=<id>/` | accepted rows |
+| `data/rejected/batch_id=<id>/` | rejected rows + `quality_report.json` |
+| `data/curated/batch_id=<id>/<entity>/data.parquet` | typed, business-transformed Parquet + `transformation_report.json` |
+| `data/spark_staging/batch_id=<id>/` | **V2 only** — Spark → pandas hand-off (gitignored) |
+| `data/warehouse/batch_id=<id>/load_report.json` | warehouse load report |
+
+**No S3. No MinIO. No cloud object storage.** This is a deliberate design choice:
+the project is intentionally zero-cost and fully runnable on one machine. Everything
+under `data/` (except the committed `_incoming/` CSVs) is pipeline output and is
+gitignored.
+
+### PostgreSQL warehouse
+
+The warehouse is a single PostgreSQL database (developed against PostgreSQL 17). The
+loader applies `sql/ddl/*.sql` idempotently on every run — there is no manual DDL
+step. **V2 reuses the V1 warehouse loader and schema unchanged.**
 
 ```mermaid
 erDiagram
@@ -297,143 +419,401 @@ erDiagram
     }
 ```
 
-Notes:
-
-- The incoming `orders.csv` has a single `total_amount` column. Transformation renames it to `source_total_amount` and adds the three reconciliation columns — the original value is preserved, never overwritten.
-- Indexes exist on the foreign-key join columns and the two analytics date columns (`sql/ddl/007_indexes.sql`), not speculatively on every column.
-- `customers` has no `country` column — this dataset is India-only, so the geographic dimension is `state`.
+- Entity tables are **current-state (SCD Type 1)** — they reflect the latest
+  successful load. `pipeline_batches` is an **append-only** ledger of every load
+  attempt.
+- Every entity row carries a `batch_id` foreign key into `pipeline_batches`.
+- Indexes exist on the foreign-key join columns and the two analytics date columns
+  (`sql/ddl/007_indexes.sql`).
 
 ---
 
-## Data Quality
+## Pipeline Batch Lifecycle
 
-Data quality is handled at two distinct points, and surfaced in the dashboard's
-**Data Quality** tab.
+One `batch_id` is minted per run and travels through every stage. In V2 it is
+returned by the first task and passed to each subsequent task via XCom.
 
 ```mermaid
-flowchart TD
-    RAW["Raw zone rows (strings, uninspected)"]
-
-    RAW --> RULES{{"Validation rules — src/validation/rules.py"}}
-    RULES --> E["Entity rules<br/>required fields · PK uniqueness ·<br/>enum/domain · numeric sign · date validity"]
-    RULES --> R["Referential rules<br/>orders to customers · order_items to orders/products ·<br/>payments to orders — checked against ACCEPTED parents"]
-    RULES --> T["Temporal rules<br/>no future dates · order_date not before customer signup ·<br/>payment_date not before order_date"]
-
-    E --> SPLIT{"split each entity's rows"}
-    R --> SPLIT
-    T --> SPLIT
-    SPLIT -->|"passes every rule"| VALID["Validated zone<br/>data/validated/batch_id=ID/"]
-    SPLIT -->|"breaks one or more rules"| REJECT["Rejected zone<br/>data/rejected/batch_id=ID/<br/>full row + all violated rule codes"]
-    REJECT --> QR["quality_report.json<br/>total / valid / rejected rows ·<br/>pass rate · rejection reason counts"]
-
-    VALID --> XFORM{{"Transformation — src/transformation/business.py"}}
-    XFORM --> RECON["Order-total reconciliation<br/>source_total_amount vs sum of line_total<br/>within tolerance 0.01 sets total_amount_reconciled"]
-    RECON --> CURATED["Curated Parquet<br/>+ transformation_report.json<br/>(reconciled / non-reconciled order ids)"]
-
-    CURATED --> LOAD{{"Warehouse loader — src/warehouse/quality.py"}}
-    LOAD --> POST["Post-load checks (pre-commit)<br/>row counts vs curated · PK uniqueness ·<br/>no orphan FKs · no unexpected nulls · monetary totals"]
-    POST --> WH[("PostgreSQL warehouse")]
-
-    QR --> DASH["Dashboard — Data Quality tab<br/>reads quality_report.json from disk +<br/>reconciliation_rate / mismatches from SQL"]
-    WH --> DASH
-
-    classDef reject fill:#5c1a1a,stroke:#d03b3b,color:#fff
-    class REJECT,QR reject
+flowchart LR
+    B1["batch_id generated<br/>(ingestion / generate_or_stage_raw)"] --> B2["raw<br/>data/raw/entity/batch_id=ID/"]
+    B2 --> B3["validated<br/>data/validated/batch_id=ID/"]
+    B3 --> B4["Spark transformed<br/>data/spark_staging/batch_id=ID/"]
+    B4 --> B5["curated<br/>data/curated/batch_id=ID/"]
+    B5 --> B6["warehouse loaded<br/>upsert, one transaction"]
+    B6 --> B7["quality checked<br/>post-load checks + reconciliation SQL"]
+    B7 --> B8(["pipeline_batches.status = SUCCESS"])
 ```
 
-**On injected defects and reconciliation:** the generator (`scripts/generate_dataset.py`)
-first builds a fully consistent dataset where every order total already equals the
-sum of its line items, then corrupts ~4% of rows per entity with **one** documented
-defect each — missing required fields, duplicate primary keys, invalid foreign
-keys, invalid enum values, non-positive quantities/prices, negative totals,
-malformed/future dates, duplicate emails. Each defect maps to a specific validation
-rule.
-
-There is **no dedicated "unbalance the order total" defect**. Reconciliation
-mismatches emerge as a *consequence*: when validation quarantines some of an
-order's `order_items` rows, the surviving accepted line items no longer sum to that
-order's recorded `total_amount`, and transformation records the gap via
-`total_amount_difference` / `total_amount_reconciled`. The dashboard shows the
-resulting reconciliation rate and lists the largest mismatches.
+- The V1 path skips `data/spark_staging/` — its pandas transformation writes
+  `data/curated/` directly.
+- Re-running a `batch_id` that already succeeded is refused at every stage; a failed
+  warehouse load rolls back fully and records `FAILED` for retry.
 
 ---
 
 ## Analytics Dashboard
 
-`streamlit run dashboard/app.py`. A read-only presentation layer — it never writes
-to PostgreSQL and never re-runs a pipeline stage. SQL text lives only in
-`sql/analytics/*.sql`; the dashboard reads and executes those files rather than
-re-typing queries as Python strings.
+A read-only Streamlit presentation layer over the warehouse. It never writes to
+PostgreSQL and never re-runs a pipeline stage. **V2 requires no dashboard changes**
+— the curated-data contract and warehouse schema are unchanged, so the analytics
+layer stays compatible.
 
 ```mermaid
 flowchart TD
     PG[("PostgreSQL warehouse")]
-
-    PG --> RE["src/warehouse/db.py<br/>get_readonly_engine()<br/>SET SESSION ... READ ONLY per connection"]
-    RE --> DBW["dashboard/db.py<br/>@st.cache_resource — one pooled engine per session"]
-
-    SQLF["sql/analytics/*.sql<br/>01_total_revenue ... 11_revenue_by_state<br/>+ dashboard/ : pipeline_batches_summary, data_freshness"]
-    DBW --> QL["dashboard/queries.py<br/>reads .sql files · @st.cache_data (60s TTL)"]
-    SQLF --> QL
-
-    QL --> APP["dashboard/app.py<br/>connection check · page layout · tab routing"]
-
-    subgraph PRES["Presentation helpers (no DB access)"]
-        FMT["dashboard/format.py<br/>INR / lakh-crore / percent formatting"]
-        CH["dashboard/charts.py<br/>Altair builders, shared palette"]
-        CMP["dashboard/components.py<br/>theme CSS · KPI row · section headers"]
-    end
-    APP --> PRES
-
-    DISK["data/rejected/batch_id=ID/quality_report.json<br/>read directly from disk"]
-    DISK --> APP
-
-    APP --> T1["Overview — KPI band, revenue trend, revenue by category"]
-    APP --> T2["Revenue — revenue by state + monthly detail"]
+    PG --> RE["src/warehouse/db.py — get_readonly_engine()<br/>SET SESSION ... READ ONLY per connection"]
+    RE --> DBW["dashboard/db.py — cached engine per session"]
+    SQLF["sql/analytics/*.sql (11 queries)"] --> QL["dashboard/queries.py — reads + executes .sql, cached (60s)"]
+    DBW --> QL
+    QL --> APP["dashboard/app.py — layout + tab routing"]
+    APP --> T1["Overview — KPIs, revenue trend, revenue by category"]
+    APP --> T2["Revenue — by state + monthly detail"]
     APP --> T3["Customers — top customers by collected revenue"]
-    APP --> T4["Orders & Payments — status + payment-method mix"]
+    APP --> T4["Orders and Payments — status + payment-method mix"]
     APP --> T5["Data Quality — batch selector, quality report, reconciliation mismatches"]
-    APP --> T6["Ask QueryPilot — NL2SQL section (src/nl2sql via dashboard/nl2sql_ui.py)"]
+    APP --> T6["Ask QueryPilot — NL2SQL (src/nl2sql)"]
 ```
 
-**Batch-selector limitation, stated plainly:** the warehouse entity tables are
-current-state (Type 1) — they always reflect the *latest* successful load. The
-**Data Quality** tab's batch selector only changes the pipeline-health panel (that
-one load's row counts, status, and quality report). Every other figure on every
-tab always reflects current warehouse state, regardless of which batch is selected.
-The dashboard says this directly rather than implying historical snapshots it does
-not provide.
+The **Data Quality** tab reads a batch's `quality_report.json` straight from disk
+and joins it with reconciliation figures from SQL. Every other figure reflects
+current warehouse state.
+
+### NL2SQL — "Ask QueryPilot"
+
+A plain-English question becomes a real result set through a fixed pipeline where
+**the LLM is never the security boundary** — it only proposes a SQL string:
+
+```
+question → length guard → per-session throttle → schema discovery → LLM SQL
+        → static AST validation (sqlglot) → [only if valid] read-only execution
+```
+
+If validation fails, `execute_sql()` is not called at all. Execution runs over a
+connection that is itself read-only (`SET SESSION CHARACTERISTICS AS TRANSACTION
+READ ONLY`), with a server-side statement timeout and a client-side row cap.
 
 ---
 
-## V2 — Airflow-orchestrated PySpark pipeline (optional, additive)
+## Pipeline Entry Points
 
-Everything above is **V1** and runs exactly as documented. **V2** is an additive
-alternative for the pipeline's middle: [Apache Airflow](https://airflow.apache.org/)
-orchestrates, and [PySpark](https://spark.apache.org/docs/latest/api/python/)
-performs the transformation (explicit schemas, referential joins, filtering,
-derived columns, and the order-reconciliation aggregation). Storage stays on the
-local filesystem; the warehouse stays the same PostgreSQL instance; the dashboard
-and NL2SQL are untouched. **No object storage, no cloud services.**
+### V1 — plain Python (no Airflow, no Spark, no Docker)
 
-| | Run V1 | Run V2 |
-|---|---|---|
-| How | `python -m src.ingestion.pipeline` → `…validation…` → `…transformation…` → `…warehouse…` | `docker compose -f docker-compose.airflow.yml up -d --build`, then trigger the `querypilot_data_pipeline` DAG |
-| Transformation | `src/transformation/` (pandas) | `src/spark_transform/` (PySpark) |
-| Dependencies | `requirements.txt` only | Airflow + PySpark, **inside the Docker image only** |
+```bash
+python scripts/generate_dataset.py                        # optional; _incoming/ is committed
+python -m src.ingestion.pipeline                          # prints the new BATCH_ID
+python -m src.validation.pipeline      --batch-id <BATCH_ID>
+python -m src.transformation.pipeline  --batch-id <BATCH_ID>
+python -m src.warehouse.pipeline       --batch-id <BATCH_ID>
+streamlit run dashboard/app.py
+```
 
-A V2-produced curated batch is byte-equivalent to V1's for the same input and loads
-through the **unchanged** V1 warehouse loader. V1 never requires Airflow or Spark.
-Full detail: **[docs/v2-airflow-pyspark.md](docs/v2-airflow-pyspark.md)**.
+### V2 — Airflow DAG
+
+Trigger `querypilot_data_pipeline` from the Airflow UI or CLI (see
+[Local Setup](#local-setup)). One trigger runs all six tasks.
+
+### V2 — Spark transform without Airflow
+
+For development / CI, the V2 transformation runs standalone against an existing
+validated batch:
+
+```bash
+pip install -r requirements-dev.txt                       # adds pyspark; needs a local JDK 17+
+python -m src.spark_transform.pipeline --batch-id <BATCH_ID>              # stage + promote
+python -m src.spark_transform.pipeline --batch-id <BATCH_ID> --stage-only
+python -m src.spark_transform.pipeline --batch-id <BATCH_ID> --promote-only
+```
+
+V1 users are never required to run through Airflow or Spark.
+
+---
+
+## Docker / Local Airflow
+
+The V2 stack is defined by four files:
+
+| File | Role |
+|---|---|
+| `docker-compose.airflow.yml` | the local Airflow stack |
+| `orchestration/Dockerfile` | `apache/airflow:2.10.3-python3.11` + OpenJDK 17 + `pyspark==3.5.3` + a subset of project deps |
+| `orchestration/requirements-airflow.txt` | pyspark, pandas, pyarrow, python-dotenv (Airflow itself comes from the base image) |
+| `orchestration/.env.airflow.example` | template for the warehouse connection (copy to `orchestration/.env.airflow`, which is gitignored) |
+
+Services:
 
 ```mermaid
-flowchart LR
-    R["generate_or_stage_raw<br/>(V1 ingestion)"] --> V["validate<br/>(V1 validation)"]
-    V --> S["pyspark_transform<br/>(Spark)"] --> C["write_curated<br/>(V1 curated contract)"]
-    C --> L["load_postgres<br/>(V1 warehouse loader)"] --> Q["quality_check"]
-    classDef spark fill:#3a2f0b,stroke:#fab219,color:#fff
-    class S,C spark
+flowchart TD
+    subgraph COMPOSE["docker-compose.airflow.yml"]
+        direction TB
+        META[("airflow-metadata-db<br/>postgres:16-alpine — Airflow metadata ONLY")]
+        INIT["airflow-init<br/>airflow db migrate + create admin user (runs once)"]
+        SCH["airflow-scheduler<br/>LocalExecutor"]
+        WEB["airflow-webserver<br/>UI on localhost:8080"]
+        META --> INIT --> SCH
+        INIT --> WEB
+    end
+    WEB -. "load_postgres / quality_check tasks" .-> WH[("Project PostgreSQL warehouse<br/>runs on the HOST — host.docker.internal<br/>NOT in this compose file")]
+    SCH -.-> WH
 ```
+
+- **Executor:** `LocalExecutor`. Single-node local orchestration — no Celery, no
+  workers, no Redis.
+- **`airflow-metadata-db`** is a dedicated `postgres:16-alpine` container used
+  **only** for Airflow's own metadata (DAG runs, task instances, XCom). It is **not**
+  the project warehouse and contains no warehouse data.
+- **The project warehouse** stays on the host and is reached from the containers at
+  `host.docker.internal:5432`. It is not part of this compose file.
+- **UI:** `http://localhost:8080` — the `airflow-webserver` service publishes port
+  `8080`.
+
+Shut the stack down with:
+
+```bash
+docker compose -f docker-compose.airflow.yml down
+```
+
+(Plain `down` removes the containers and network and keeps the Airflow metadata
+volume. It does not touch the host warehouse.)
+
+---
+
+## Configuration
+
+Two separate environments; do not mix them.
+
+### V1 — Python environment (`.env`, gitignored)
+
+| Variable | Purpose |
+|---|---|
+| `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | warehouse connection |
+| `NL2SQL_PROVIDER` | `anthropic` / `gemini` / `ollama` / `openrouter` (optional; default `anthropic`) |
+| provider keys (`GEMINI_API_KEY`, …) | only the selected provider's key is read |
+
+See `.env.example`. Credentials belong only in `.env` — never in `.env.example`,
+never committed.
+
+### V2 — Airflow Docker environment (`orchestration/.env.airflow`, gitignored)
+
+Copy `orchestration/.env.airflow.example` to `orchestration/.env.airflow` and set
+the warehouse `POSTGRES_*` values (host stays `host.docker.internal`). **Do not
+commit `orchestration/.env.airflow`** — it is gitignored, and it is local to your
+machine. The Airflow metadata DB credentials are internal to the compose file and
+need nothing configured here.
+
+---
+
+## Local Setup
+
+### V1
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate                 # Windows  (source .venv/bin/activate on POSIX)
+pip install -r requirements.txt
+copy .env.example .env                  # fill in a reachable PostgreSQL
+
+# create the warehouse database once:
+#   CREATE DATABASE dataeng_warehouse;
+
+python -m src.ingestion.pipeline
+python -m src.validation.pipeline      --batch-id <BATCH_ID>
+python -m src.transformation.pipeline  --batch-id <BATCH_ID>
+python -m src.warehouse.pipeline       --batch-id <BATCH_ID>
+streamlit run dashboard/app.py
+```
+
+V1 requires **no** Airflow, PySpark, or Docker.
+
+### V2
+
+```bash
+# 1. Start Docker Desktop (or Docker Engine).
+
+# 2. Prepare the local Airflow environment:
+cp orchestration/.env.airflow.example orchestration/.env.airflow
+#    → set POSTGRES_PASSWORD (and POSTGRES_USER if not "postgres")
+
+# 3. Build and start the Airflow stack (first build takes a few minutes):
+docker compose -f docker-compose.airflow.yml up -d --build
+
+# 4. Open the Airflow UI:
+#    http://localhost:8080   (admin / admin)
+
+# 5. Find the DAG:  querypilot_data_pipeline
+# 6. Un-pause it.
+# 7. Trigger one DAG run.
+# 8. Watch the six tasks:
+#    generate_or_stage_raw → validate → pyspark_transform → write_curated → load_postgres → quality_check
+
+# Shut down when done:
+docker compose -f docker-compose.airflow.yml down
+```
+
+Curated Parquet and the warehouse load land on the host filesystem (the repo is
+bind-mounted into the containers), so the existing dashboard reads V2 output with no
+changes.
+
+---
+
+## Testing
+
+```bash
+python -m pytest -q
+```
+
+**Verified result (with `requirements-dev.txt` installed): `243 passed, 1 skipped`.**
+
+| Group | Count | Notes |
+|---|---|---|
+| V1 pipeline + dashboard + NL2SQL tests | 236 | unit + real-database integration; DB tests use throwaway databases and **skip cleanly** if no PostgreSQL is reachable |
+| V2 PySpark transformation tests (`tests/test_spark_transform.py`) | 7 | run only when `pyspark` + a local JDK are present (i.e. `requirements-dev.txt` installed); **skip cleanly** otherwise |
+| V2 Airflow DAG test (`tests/test_airflow_dag.py`) | 1 skipped | needs `apache-airflow`, which is **not** installed in the V1 environment — it runs inside the Airflow image |
+
+With only `requirements.txt` installed, the 7 PySpark tests skip instead of running
+(the DAG test skips in both cases). Unit / functional tests run in the plain Python
+environment; the **live Airflow + PySpark run** (next section) is a separate, manual
+verification.
+
+---
+
+## Live Verification
+
+A full live smoke test of the V2 stack was run and confirmed:
+
+| Check | Result |
+|---|---|
+| Docker Engine | 29.7.2, Linux (WSL2), 8 CPU |
+| Airflow image build | succeeded (`apache/airflow:2.10.3-python3.11` + OpenJDK 17.0.20.1 + pyspark 3.5.3) |
+| `airflow-metadata-db` | healthy |
+| `airflow-scheduler` | running (LocalExecutor) |
+| `airflow-webserver` | healthy — `http://localhost:8080/health` → HTTP 200 |
+| DAG import | `querypilot_data_pipeline` listed, **zero import errors** |
+| DAG runs triggered | exactly **one** |
+| Task results | `generate_or_stage_raw` ✅ · `validate` ✅ · `pyspark_transform` ✅ · `write_curated` ✅ · `load_postgres` ✅ · `quality_check` ✅ — **all 6 SUCCESS** (~44 s total) |
+| PySpark actually executed | Spark JVM started (`NativeCodeLoader` WARN in scheduler logs during the task window); a ~6 s SparkSession startup gap in the task log; image has JDK 17 + pyspark 3.5.3 |
+| Spark operations executed | explicit-schema CSV reads, casts, referential `left_semi` joins, numeric-domain filters, `line_total`, group-by reconciliation aggregation |
+| Curated Parquet | generated in the V1 single-file layout for all 5 entities (customers 484 / products 95 / orders 1845 / order_items 4160 / payments 1934) |
+| `transformation_report.json` | contains `"engine": "pyspark"` |
+| V2 output vs V1 output | **value-identical** for all 5 entities (same seeded input) |
+| PostgreSQL load | via the **unchanged** `run_warehouse_load`; 8518 rows upserted; post-load checks passed |
+| Warehouse batch status | `pipeline_batches.status = SUCCESS`, `loaded_row_count = 8518`, no error |
+| `quality_check` | passed — reconciliation rate 79.02% (1458 / 1845 orders) |
+| V1 standalone | `python -m src.ingestion.pipeline` still runs with no Airflow / Spark / Docker |
+| Full test suite | `243 passed, 1 skipped` |
+
+No runtime logs are reproduced here as screenshots; the table above is the recorded
+outcome.
+
+---
+
+## V1 / V2 Compatibility
+
+The two paths share everything except one engine and one driver.
+
+```mermaid
+flowchart TD
+    subgraph V1P["V1 — plain Python"]
+        direction TB
+        A1["ingestion"] --> A2["validation"] --> A3["transformation (pandas)"] --> A4["warehouse loader"]
+    end
+    subgraph V2P["V2 — Airflow + PySpark"]
+        direction TB
+        B0["Airflow DAG"] --> B1["ingestion (same code)"]
+        B1 --> B2["validation (same code)"]
+        B2 --> B3["transformation (PySpark)"]
+        B3 --> B4["warehouse loader (same code)"]
+    end
+    A4 --> WH[("PostgreSQL warehouse<br/>one schema, one loader")]
+    B4 --> WH
+    WH --> DL["dashboard + analytical SQL + NL2SQL<br/>(unchanged)"]
+
+    classDef spark fill:#3a2f0b,stroke:#fab219,color:#fff
+    class B0,B3 spark
+```
+
+| Concern | State |
+|---|---|
+| `requirements.txt` | the V1 dependency baseline — **unchanged by V2** |
+| PySpark | in `requirements-dev.txt` only (and in the Airflow Docker image) |
+| Apache Airflow | Docker image only — never in any Python requirements file |
+| V1 source code | does **not** import `airflow` or `pyspark` (verified) |
+| V1 runnability | fully independent — no Airflow, Spark, or Docker required |
+| Curated-data contract | identical (one `data.parquet` per entity per batch) |
+| Warehouse schema + loader | reused unchanged |
+| Data-quality checks | reused unchanged |
+
+---
+
+## Design Decisions
+
+1. **Preserve V1.** It is the stable baseline and is not rewritten.
+2. **Add V2, don't replace V1.** V2 is a second driver and a second transformation
+   engine over the same logic.
+3. **Airflow for orchestration.** Sequencing, retries, XCom `batch_id` propagation,
+   and run visibility — not transformation.
+4. **PySpark for the transformation-heavy step.** Explicit schemas, relational
+   joins across five entities, cross-entity filtering, a group-by aggregation.
+5. **Local filesystem storage.** Keeps the project zero-cost and runnable anywhere;
+   no S3 / MinIO / cloud object storage.
+6. **PostgreSQL stays the warehouse.** Same schema, same loader, same lineage
+   ledger.
+7. **Preserve the curated-data contract.** V2 promotes Spark output to V1's exact
+   single-file Parquet layout via V1's own writer.
+8. **V2 output must match V1 output.** Verified value-identical for all five
+   entities on the same input.
+9. **No unnecessary cloud infrastructure.**
+10. **No distributed infrastructure this dataset doesn't need** — Spark runs
+    `local[*]`; Airflow runs `LocalExecutor`.
+
+---
+
+## Current Limitations
+
+- **Spark runs locally** (`local[*]`, one process). This is not a production Spark
+  cluster and makes no distributed-scale or throughput claims.
+- **Airflow uses `LocalExecutor`** — single-node local orchestration.
+- **DAG scheduling is manual** (`schedule=None`); there is no cron schedule or
+  backfill.
+- **No object storage.** Raw/validated/curated data lives on the local filesystem
+  by design.
+- **The final single-file Parquet promotion uses V1's PyArrow writer**, not a Spark
+  sink — a deliberate choice to preserve the V1 curated contract.
+- **On a Windows host, local Spark carries JVM startup and per-action overhead** and
+  needs a JDK 17+; the standalone Spark test module takes a couple of minutes there
+  (fast inside the Linux container).
+- **Warehouse entity tables are current-state (SCD Type 1)** — no per-batch
+  historical snapshot.
+- **The dataset is synthetic and static** — recent-looking timestamps come from
+  fixed constants, not a live feed.
+
+None of these are defects; they are the scope boundaries of a deliberately
+local-first project.
+
+---
+
+## Future Roadmap
+
+**Everything below is NOT IMPLEMENTED** — direction only.
+
+```mermaid
+flowchart TD
+    NOW["Current: V1 baseline + V2 (Airflow + PySpark) foundation"]
+    NOW -.-> F1["Scheduled Airflow runs (cron) + backfill"]
+    NOW -.-> F2["Larger / distributed Spark environment"]
+    NOW -.-> F3["Spark cluster deployment"]
+    NOW -.-> F4["S3 / object storage option"]
+    NOW -.-> F5["Cloud orchestration"]
+    NOW -.-> F6["Incremental / CDC processing"]
+    NOW -.-> F7["Data catalog + richer observability"]
+    NOW -.-> F8["Local-LLM (Ollama) default for NL2SQL"]
+
+    classDef future fill:#2a2a2a,stroke:#8b949e,color:#fff,stroke-dasharray: 5 5
+    class F1,F2,F3,F4,F5,F6,F7,F8 future
+```
+
+Guiding constraints, unchanged: zero mandatory cloud fees, no paid managed
+services, no object storage in the default path, everything runnable locally, and
+existing business logic reused rather than rewritten.
 
 ---
 
@@ -441,21 +821,23 @@ flowchart LR
 
 | Concern | Choice | Notes |
 |---|---|---|
-| Language | Python 3.9+ | |
-| Tabular processing | pandas | |
-| Columnar storage | Parquet via PyArrow | curated zone only |
+| Language | Python | 3.9+ (host); the Airflow image uses Python 3.11 |
+| V1 tabular processing | pandas | |
+| V2 transformation engine | PySpark | `3.5.3`, `local[*]`, JDK 17+ |
+| Columnar storage | Parquet via PyArrow | curated zone; also the V2 staging + single-file promotion |
 | Warehouse | PostgreSQL | developed against PostgreSQL 17 |
-| DB access | SQLAlchemy 2.x + psycopg2 | |
-| Configuration | environment variables via `python-dotenv` | `.env`, gitignored |
-| Dashboard | Streamlit | Altair charts ship with Streamlit — no added dependency |
-| NL2SQL generation | Anthropic / Gemini / Ollama / OpenRouter | selected by `NL2SQL_PROVIDER`; Gemini free-tier and Ollama are the no-cost options |
-| NL2SQL safety gate | `sqlglot` | AST-based, PostgreSQL dialect |
-| Structured LLM output | `pydantic` | enforces `{ sql, explanation, tables_used }` |
-| Testing | `pytest` | 236 tests; warehouse/dashboard integration tests use throwaway databases and skip cleanly if none is reachable |
+| DB access | SQLAlchemy + psycopg2 | `create_engine(..., future=True)` |
+| V2 orchestration | Apache Airflow | `2.10.3`, `LocalExecutor`, TaskFlow API |
+| V2 local runtime | Docker + Docker Compose | Airflow webserver / scheduler / metadata DB |
+| Analytical SQL | plain `.sql` files | `sql/analytics/` — single source of truth |
+| Dashboard | Streamlit | Altair charts ship with Streamlit — no extra dependency |
+| NL2SQL SQL safety | `sqlglot` | AST-based, PostgreSQL dialect |
+| Structured LLM output | `pydantic` | |
+| Testing | `pytest` | |
+| Config | `python-dotenv` | `.env` (V1), `orchestration/.env.airflow` (V2) |
 
-Deliberately **not** used: Airflow, Kafka, Spark, dbt, Kubernetes, DuckDB, any
-cloud/managed service, any authentication layer. They are out of scope for this
-project's size — see [Future Roadmap](#future-roadmap).
+Not used: S3 / MinIO / cloud object storage, Kafka, RabbitMQ, `CeleryExecutor`,
+Kubernetes, dbt, a Spark cluster, any managed service, any auth layer.
 
 ---
 
@@ -463,218 +845,63 @@ project's size — see [Future Roadmap](#future-roadmap).
 
 ```
 .
-├── data/
-│   ├── raw/
-│   │   ├── _incoming/        # committed source extracts (5 CSVs)
-│   │   ├── _batches/         # ingestion run manifests (gitignored)
-│   │   └── <entity>/         # immutable batch-partitioned raw output (gitignored)
-│   ├── validated/            # accepted rows per batch (gitignored)
-│   ├── rejected/             # rejected rows + quality_report.json per batch (gitignored)
-│   ├── curated/              # curated Parquet + transformation_report.json (gitignored)
-│   └── warehouse/            # warehouse load report per batch (gitignored)
 ├── scripts/
-│   └── generate_dataset.py   # synthetic dataset generator (stdlib only, seeded)
+│   └── generate_dataset.py       # seeded synthetic dataset generator (stdlib only)
 ├── src/
-│   ├── ingestion/            # shape-only checks, immutable batch landing, manifest
-│   ├── validation/           # entity/referential/temporal rules, accepted + rejected output
-│   ├── transformation/       # V1: type casting, line_total, order reconciliation, curated Parquet
-│   ├── spark_transform/      # V2: the same transformation in PySpark (additive)
-│   ├── warehouse/            # DDL application, upsert loading, lineage ledger, post-load checks
-│   ├── catalog/              # reserved for dataset/schema metadata (currently empty)
-│   └── nl2sql/               # discovery, context, generation, validation, execution
-│       └── providers/        # anthropic / gemini / ollama / openrouter adapters
-├── orchestration/           # V2: Airflow image, DAG, requirements (local Docker only)
+│   ├── ingestion/                # CSV → immutable raw batch + manifest
+│   ├── validation/               # entity / referential / temporal rules; accepted + rejected
+│   ├── transformation/           # V1: pandas transform → curated Parquet + report
+│   ├── spark_transform/          # V2: the same transform in PySpark (session, schemas, transform, pipeline)
+│   ├── warehouse/                # DDL apply, idempotent upsert, lineage ledger, post-load checks
+│   ├── nl2sql/                    # schema discovery, LLM SQL generation, AST validation, read-only execution
+│   │   └── providers/            # anthropic / gemini / ollama / openrouter
+│   └── catalog/                   # reserved for dataset/schema metadata (currently empty)
+├── dashboard/                     # read-only Streamlit app (app, queries, db, charts, format, components, nl2sql_ui)
+├── sql/
+│   ├── ddl/                      # warehouse table definitions (applied idempotently by the loader)
+│   └── analytics/                # 11 read-only analytical queries (+ dashboard/ subset)
+├── orchestration/                # V2: Airflow image + DAG (local Docker only)
 │   ├── Dockerfile
 │   ├── requirements-airflow.txt
+│   ├── .env.airflow.example
 │   └── dags/querypilot_data_pipeline.py
-├── docker-compose.airflow.yml   # V2: local Airflow stack (LocalExecutor)
-├── sql/
-│   ├── ddl/                  # warehouse table definitions (applied idempotently by the loader)
-│   └── analytics/            # 11 read-only analytical queries
-│       └── dashboard/        # dashboard-only queries (batch history, data freshness)
-├── dashboard/
-│   ├── app.py                # Streamlit entrypoint / tabbed layout
-│   ├── queries.py            # reads + executes sql/analytics/*.sql, cached
-│   ├── db.py                 # cached, read-only-enforced PostgreSQL engine
-│   ├── format.py             # INR / lakh-crore / number formatting (pure)
-│   ├── charts.py             # Altair chart builders, shared palette
-│   ├── components.py         # theme CSS, KPI cards, section headers
-│   └── nl2sql_ui.py          # "Ask QueryPilot" section — orchestrates src/nl2sql only
-├── tests/                    # 236 V1 tests + additive V2 Spark / DAG tests
-├── config/
-│   └── settings.py           # environment-driven configuration
-├── docs/v2-airflow-pyspark.md # V2 architecture & how to run it
-├── requirements.txt          # V1 runtime — unchanged by V2
-├── requirements-dev.txt      # dev-only: adds pyspark for running the V2 path locally
-├── .env.example
-└── .streamlit/config.toml    # dashboard theme
+├── docker-compose.airflow.yml     # V2: local Airflow stack (LocalExecutor)
+├── data/                          # pipeline zones (gitignored except raw/_incoming/)
+├── tests/                         # 236 V1 tests + test_spark_transform.py + test_airflow_dag.py
+├── config/settings.py             # environment-driven configuration
+├── docs/v2-airflow-pyspark.md     # extended V2 notes
+├── requirements.txt               # V1 runtime — unchanged by V2
+└── requirements-dev.txt           # dev-only: pyspark for running the V2 path locally
 ```
 
----
-
-## Setup & Running
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate                 # Windows  (source .venv/bin/activate on POSIX)
-pip install -r requirements.txt
-copy .env.example .env                  # then fill in a reachable Postgres, and an NL2SQL provider if wanted
-```
-
-Create the warehouse database once, with whatever admin access you have:
-
-```sql
-CREATE DATABASE dataeng_warehouse;
-```
-
-Set `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` / `POSTGRES_USER` /
-`POSTGRES_PASSWORD` in `.env`. The loader applies `sql/ddl/` itself on every run —
-there is no manual DDL step.
-
-Run the pipeline end to end:
-
-```bash
-python scripts/generate_dataset.py                              # optional — _incoming/ is already committed
-python -m src.ingestion.pipeline                                # prints the new BATCH_ID
-python -m src.validation.pipeline      --batch-id <BATCH_ID>
-python -m src.transformation.pipeline  --batch-id <BATCH_ID>
-python -m src.warehouse.pipeline       --batch-id <BATCH_ID>
-streamlit run dashboard/app.py
-```
-
-The `<BATCH_ID>` is printed by ingestion and also recorded in `data/raw/_batches/`.
-
-### NL2SQL provider
-
-Set `NL2SQL_PROVIDER` in `.env` to one of `anthropic` / `gemini` / `ollama` /
-`openrouter` (unset defaults to `anthropic` for backward compatibility). Only the
-selected provider's own settings are read. Gemini's free tier and a local Ollama
-model are the zero-cost options. Credentials belong only in `.env` — never in
-`.env.example`, never committed.
-
----
-
-## Testing
-
-```bash
-pytest
-```
-
-236 tests. Unit tests for every pipeline stage use isolated `tmp_path` fixtures and
-monkeypatch the configured data directories — they never touch the real `data/`
-tree. `tests/test_warehouse.py` and `tests/test_dashboard.py` each create and drop
-a uniquely-named throwaway PostgreSQL database; if no server is reachable, or the
-configured user cannot `CREATE DATABASE`, those modules **skip with an explanation**
-rather than failing.
-
----
-
-## Design Principles
-
-- **Explicit stages, explicit hand-offs.** Each stage reads one zone and writes the
-  next. No stage re-does an earlier stage's work — transformation trusts the
-  validated zone; the warehouse loader trusts the curated zone.
-- **Immutability and safe re-runs.** Every writer refuses to overwrite an existing
-  batch. Warehouse loads are idempotent (`ON CONFLICT DO UPDATE`) and an
-  already-succeeded batch is refused outright.
-- **Bad data is an expected outcome, not a crash.** Data-quality rejections and
-  reconciliation mismatches are measured and reported; the pipeline still exits 0.
-  A *pipeline* failure (missing batch, corrupt file, already-processed batch) exits
-  non-zero with a clear message.
-- **Lineage is permanent.** `pipeline_batches` is append-only. Entity tables move
-  forward to the newest batch's state; the ledger keeps every attempt.
-- **Security boundaries are separate from the thing they guard.** The NL2SQL
-  validator and read-only executor are independent of SQL generation — a provider
-  (or a bug in one) can produce bad SQL; it cannot make bad SQL run.
-- **One source of truth per concern.** SQL text lives in `sql/`. The read-only
-  engine is built once in `src/warehouse/db.py` and reused by the dashboard and
-  NL2SQL. Path construction is centralised per stage.
-- **No dependency the project doesn't need.** Altair rather than a new chart
-  library; `sqlglot` rather than a keyword blocklist; standard-library-only dataset
-  generation.
-
----
-
-## Current Limitations
-
-- **Current-state warehouse only.** Entity tables are SCD Type 1 — no historical
-  snapshot per batch. The dashboard is explicit about this.
-- **Synthetic, static data.** Recent-looking timestamps come from fixed reference
-  constants, not the wall clock. It is never presented as a live or real-time feed,
-  and no external data source is called.
-- **Manual orchestration.** The four stages are run by hand (or a shell script).
-  There is no scheduler, no dependency graph engine, no retry/backfill machinery.
-- **Local filesystem zones.** Raw/validated/curated data lives under `data/` on the
-  local disk. There is no object-storage layer.
-- **NL2SQL depends on an external LLM by default.** The zero-cost paths (Gemini
-  free tier, local Ollama) exist but a fully offline default is not yet wired.
-- **Single-node PostgreSQL.** No replication, partitioning, or columnar analytics
-  engine — appropriate for the dataset size (thousands of rows).
-
----
-
-## Future Roadmap
-
-The **V1** platform is the stable baseline. **V2** (Airflow + PySpark, above) is a
-delivered, additive foundation. Everything in the *Not implemented* box below is
-direction only.
-
-```mermaid
-flowchart TD
-    subgraph V1["V1 — IMPLEMENTED and TESTED (stable baseline)"]
-        direction TB
-        DE["Batch pipeline (pandas)<br/>ingestion to validation to transformation to curated Parquet"]
-        WH[("PostgreSQL warehouse<br/>+ pipeline_batches lineage")]
-        DASH["Streamlit dashboard"]
-        NL["NL2SQL — Ask QueryPilot"]
-        DE --> WH
-        WH --> DASH
-        WH --> NL
-    end
-
-    subgraph V2["V2 — FOUNDATION (additive, optional)"]
-        direction TB
-        G1["Apache Airflow orchestration<br/>DAG: querypilot_data_pipeline (LocalExecutor, Docker)"]
-        G2["PySpark transformation<br/>src/spark_transform — joins, filters, aggregation"]
-        G3["Local filesystem storage · same PostgreSQL warehouse"]
-        G1 --> G2 --> G3
-    end
-
-    subgraph FUT["NOT IMPLEMENTED — direction only"]
-        direction TB
-        F3["Zero-cost NL2SQL<br/>local Ollama model as the default provider"]
-        F4["Streaming ingestion<br/>Kafka / RabbitMQ event source — exploratory"]
-        F5["Application / API tier<br/>Spring Boot — exploratory"]
-    end
-
-    V1 ==> V2
-    V2 -.-> FUT
-
-    classDef v2 fill:#3a2f0b,stroke:#fab219,color:#fff
-    classDef future fill:#2a2a2a,stroke:#8b949e,color:#fff,stroke-dasharray: 5 5
-    class V2,G1,G2,G3 v2
-    class FUT,F3,F4,F5 future
-```
-
-Guiding constraints, unchanged across V1 and V2: zero mandatory cloud fees, no paid
-managed services, no object storage, everything runnable locally, and existing
-business logic reused rather than rewritten.
+Key directories: `src/` holds every pipeline stage as an independent package;
+`src/spark_transform/` and `orchestration/` are the entire V2 surface; `sql/` is the
+single source of truth for all SQL; `data/` is local pipeline output.
 
 ---
 
 ## Project Status
 
-| Phase | Status |
-|---|---|
-| 1 — Repository cleanup & Python foundation | Done |
-| 2 — Dataset contract & ingestion | Done |
-| 3 — Data-quality / validation | Done |
-| 4 — Transformation & curated Parquet | Done |
-| 5 — PostgreSQL warehouse & analytical SQL | Done |
-| 6 — Analytics dashboard | Done |
-| 7 — NL2SQL / "Ask QueryPilot" (schema discovery, generation, validation, execution, multi-provider) | Done |
-| 8 — India localization & premium dashboard | Done |
-| V2 foundation — Airflow orchestration + PySpark transformation (additive; local, no cloud) | Done ([docs](docs/v2-airflow-pyspark.md)) |
-| Future — local-LLM NL2SQL / streaming / API tier | Not started (see roadmap) |
+**V1** — stable Python data engineering pipeline: ingestion, validation,
+transformation, curated Parquet, PostgreSQL warehouse, data-quality and
+reconciliation checks, analytical SQL, Streamlit dashboard, NL2SQL.
 
-236 tests passing. The V1 platform above is complete and stable.
+**V2** — working additive enhancement: Apache Airflow orchestration + PySpark
+transformation, local filesystem storage, the same PostgreSQL warehouse, reusing
+V1's ingestion / validation / curated contract / warehouse loader / quality checks.
+
+**Verification**
+
+- `243` tests passing, `1` skipped.
+- The real Airflow DAG `querypilot_data_pipeline` executed successfully — all 6
+  tasks SUCCESS.
+- PySpark transformation verified to run and to produce output value-identical to
+  V1.
+- PostgreSQL load verified through the unchanged V1 loader; `pipeline_batches`
+  status SUCCESS.
+- V1 standalone execution verified without Airflow, PySpark, or Docker.
+
+**Branches**
+
+- `main` — V1 baseline.
+- `feature/airflow-pyspark-pipeline` — V2 enhancement. **Not merged into `main`.**
