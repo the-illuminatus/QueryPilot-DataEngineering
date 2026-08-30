@@ -45,3 +45,13 @@ data/validated/*
 
 data/warehouse/*
 !data/warehouse/.gitkeep
+
+# V2 (Airflow + PySpark) -- local-only artifacts
+data/spark_staging/
+orchestration/.env.airflow
+orchestration/logs/
+# Spark local-metastore droppings (created if a job ever touches Hive/derby)
+spark-warehouse/
+metastore_db/
+derby.log
+*.crc

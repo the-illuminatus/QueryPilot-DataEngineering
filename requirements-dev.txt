@@ -1,8 +1,17 @@
 # Development-time-only dependencies.
 #
-# The synthetic dataset generator (scripts/generate_dataset.py) is now
-# dependency-free -- it uses only the standard library -- so there is
-# nothing to install here at the moment. This file is kept as the
-# conventional place for future dev-only tooling (linters, type checkers,
-# generation helpers) so they never leak into requirements.txt and
-# inflate the pipeline's real runtime footprint.
+# The synthetic dataset generator (scripts/generate_dataset.py) is
+# dependency-free -- it uses only the standard library.
+
+# --- V2 (Airflow + PySpark) ---
+# PySpark is the V2 transformation engine. In normal V2 operation it runs
+# inside the Airflow Docker image (see airflow/Dockerfile) and is NOT
+# needed by V1 at all -- V1's requirements.txt is untouched. Install this
+# only to run the Spark path or its tests directly on your machine
+# (`python -m src.spark_transform.pipeline ...`, `pytest
+# tests/test_spark_transform.py`). Needs a local JDK 17+ on PATH.
+pyspark==3.5.3
+
+# Apache Airflow is intentionally NOT listed here -- it lives only in the
+# Docker image (docker-compose.airflow.yml). Its dependency tree should
+# never be installed into the V1 environment.

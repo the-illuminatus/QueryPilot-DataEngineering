@@ -1,0 +1,99 @@
+# docker-compose.airflow.yml -- QueryPilot V2 local stack.
+#
+# Apache Airflow (LocalExecutor) orchestrating the PySpark pipeline.
+# Everything is local: no S3, no cloud services, no distributed Airflow.
+#
+#   cp orchestration/.env.airflow.example orchestration/.env.airflow   # set the warehouse password
+#   docker compose -f docker-compose.airflow.yml up -d --build
+#   open http://localhost:8080          # admin / admin
+#   # un-pause and trigger the "querypilot_data_pipeline" DAG
+#   docker compose -f docker-compose.airflow.yml down       # add -v to wipe the metadata db
+#
+# The PostgreSQL *warehouse* is NOT in this file -- V2 reuses the existing
+# host PostgreSQL, reached at host.docker.internal (see orchestration/.env.airflow).
+# The only database here is Airflow's own metadata store.
+#
+# V1 does not use this file at all.
+
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: orchestration/Dockerfile
+  env_file:
+    - orchestration/.env.airflow
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-metadata-db:5432/airflow
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+    PYTHONPATH: /opt/project
+    QUERYPILOT_PROJECT_ROOT: /opt/project
+    JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+  volumes:
+    - ./orchestration/dags:/opt/airflow/dags
+    - ./orchestration/logs:/opt/airflow/logs
+    - .:/opt/project
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  airflow-metadata-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-metadata-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  airflow-init:
+    <<: *airflow-common
+    depends_on:
+      airflow-metadata-db:
+        condition: service_healthy
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        set -e
+        airflow db migrate
+        airflow users create --username admin --password admin \
+          --firstname Query --lastname Pilot --role Admin --email admin@example.com || true
+    restart: "no"
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    restart: unless-stopped
+    depends_on:
+      airflow-metadata-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    depends_on:
+      airflow-metadata-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  airflow-metadata-db:

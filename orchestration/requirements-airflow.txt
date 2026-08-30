@@ -1,0 +1,17 @@
+# Extra packages baked into the local Airflow image (V2 only).
+#
+# Airflow itself, SQLAlchemy, and psycopg2 come from the base image
+# (apache/airflow:2.10.3 ships the postgres provider). These are only the
+# project runtime deps the DAG's tasks import that the base image does not
+# already provide -- a deliberate subset of ../requirements.txt:
+#   - no streamlit / anthropic / sqlglot: the dashboard and NL2SQL layers
+#     are not part of the V2 pipeline.
+#
+# NOTE: the project's warehouse code calls create_engine(..., future=True),
+# so it runs correctly on the SQLAlchemy 1.4.x that Airflow 2.10 pins --
+# SQLAlchemy is intentionally NOT listed here.
+
+pyspark==3.5.3
+pandas>=2.0,<3
+pyarrow>=14,<18
+python-dotenv>=1.0

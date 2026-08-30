@@ -1,0 +1,9 @@
+# Keep line endings LF for files consumed inside Linux containers / by
+# tools that choke on CR. Everything else follows Git's default handling.
+*.sh              text eol=lf
+Dockerfile        text eol=lf
+*.yml             text eol=lf
+*.yaml            text eol=lf
+docker-compose*.yml text eol=lf
+orchestration/.env.airflow.example text eol=lf
+requirements*.txt text eol=lf

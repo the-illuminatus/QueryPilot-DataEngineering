@@ -39,9 +39,10 @@ need.
 
 ## Architecture
 
-All diagrams below describe the **current, implemented V1 architecture**. Anything
-future is confined to the [Future Roadmap](#future-roadmap) section and explicitly
-labelled.
+All diagrams in this section describe the **implemented V1 architecture**. The
+additive [V2 pipeline](#v2--airflow-orchestrated-pyspark-pipeline-optional-additive)
+(Airflow + PySpark) has its own section; genuinely unbuilt ideas are confined to
+the [Future Roadmap](#future-roadmap) and explicitly labelled.
 
 Consistent terminology used throughout:
 
@@ -405,6 +406,37 @@ not provide.
 
 ---
 
+## V2 — Airflow-orchestrated PySpark pipeline (optional, additive)
+
+Everything above is **V1** and runs exactly as documented. **V2** is an additive
+alternative for the pipeline's middle: [Apache Airflow](https://airflow.apache.org/)
+orchestrates, and [PySpark](https://spark.apache.org/docs/latest/api/python/)
+performs the transformation (explicit schemas, referential joins, filtering,
+derived columns, and the order-reconciliation aggregation). Storage stays on the
+local filesystem; the warehouse stays the same PostgreSQL instance; the dashboard
+and NL2SQL are untouched. **No object storage, no cloud services.**
+
+| | Run V1 | Run V2 |
+|---|---|---|
+| How | `python -m src.ingestion.pipeline` → `…validation…` → `…transformation…` → `…warehouse…` | `docker compose -f docker-compose.airflow.yml up -d --build`, then trigger the `querypilot_data_pipeline` DAG |
+| Transformation | `src/transformation/` (pandas) | `src/spark_transform/` (PySpark) |
+| Dependencies | `requirements.txt` only | Airflow + PySpark, **inside the Docker image only** |
+
+A V2-produced curated batch is byte-equivalent to V1's for the same input and loads
+through the **unchanged** V1 warehouse loader. V1 never requires Airflow or Spark.
+Full detail: **[docs/v2-airflow-pyspark.md](docs/v2-airflow-pyspark.md)**.
+
+```mermaid
+flowchart LR
+    R["generate_or_stage_raw<br/>(V1 ingestion)"] --> V["validate<br/>(V1 validation)"]
+    V --> S["pyspark_transform<br/>(Spark)"] --> C["write_curated<br/>(V1 curated contract)"]
+    C --> L["load_postgres<br/>(V1 warehouse loader)"] --> Q["quality_check"]
+    classDef spark fill:#3a2f0b,stroke:#fab219,color:#fff
+    class S,C spark
+```
+
+---
+
 ## Technology Stack
 
 | Concern | Choice | Notes |
@@ -445,11 +477,17 @@ project's size — see [Future Roadmap](#future-roadmap).
 ├── src/
 │   ├── ingestion/            # shape-only checks, immutable batch landing, manifest
 │   ├── validation/           # entity/referential/temporal rules, accepted + rejected output
-│   ├── transformation/       # type casting, line_total, order reconciliation, curated Parquet
+│   ├── transformation/       # V1: type casting, line_total, order reconciliation, curated Parquet
+│   ├── spark_transform/      # V2: the same transformation in PySpark (additive)
 │   ├── warehouse/            # DDL application, upsert loading, lineage ledger, post-load checks
 │   ├── catalog/              # reserved for dataset/schema metadata (currently empty)
 │   └── nl2sql/               # discovery, context, generation, validation, execution
 │       └── providers/        # anthropic / gemini / ollama / openrouter adapters
+├── orchestration/           # V2: Airflow image, DAG, requirements (local Docker only)
+│   ├── Dockerfile
+│   ├── requirements-airflow.txt
+│   └── dags/querypilot_data_pipeline.py
+├── docker-compose.airflow.yml   # V2: local Airflow stack (LocalExecutor)
 ├── sql/
 │   ├── ddl/                  # warehouse table definitions (applied idempotently by the loader)
 │   └── analytics/            # 11 read-only analytical queries
@@ -462,11 +500,12 @@ project's size — see [Future Roadmap](#future-roadmap).
 │   ├── charts.py             # Altair chart builders, shared palette
 │   ├── components.py         # theme CSS, KPI cards, section headers
 │   └── nl2sql_ui.py          # "Ask QueryPilot" section — orchestrates src/nl2sql only
-├── tests/                    # 236 pytest tests (unit + real-database integration)
+├── tests/                    # 236 V1 tests + additive V2 Spark / DAG tests
 ├── config/
 │   └── settings.py           # environment-driven configuration
-├── requirements.txt
-├── requirements-dev.txt      # dev-only tooling (currently empty; generator is stdlib-only)
+├── docs/v2-airflow-pyspark.md # V2 architecture & how to run it
+├── requirements.txt          # V1 runtime — unchanged by V2
+├── requirements-dev.txt      # dev-only: adds pyspark for running the V2 path locally
 ├── .env.example
 └── .streamlit/config.toml    # dashboard theme
 ```
@@ -576,49 +615,50 @@ rather than failing.
 
 ## Future Roadmap
 
-Everything below is **FUTURE / NOT IMPLEMENTED**. It is not part of the current
-system and is documented only to show intended direction. The current V1 platform
-is the stable baseline and does not depend on any of it.
+The **V1** platform is the stable baseline. **V2** (Airflow + PySpark, above) is a
+delivered, additive foundation. Everything in the *Not implemented* box below is
+direction only.
 
 ```mermaid
 flowchart TD
-    subgraph V1["CURRENT V1 — IMPLEMENTED and TESTED (stable baseline)"]
+    subgraph V1["V1 — IMPLEMENTED and TESTED (stable baseline)"]
         direction TB
-        DE["Batch data engineering pipeline<br/>ingestion to validation to transformation to curated Parquet"]
+        DE["Batch pipeline (pandas)<br/>ingestion to validation to transformation to curated Parquet"]
         WH[("PostgreSQL warehouse<br/>+ pipeline_batches lineage")]
-        DASH["Streamlit analytics dashboard"]
-        NL["NL2SQL — Ask QueryPilot<br/>AST validation + read-only execution"]
+        DASH["Streamlit dashboard"]
+        NL["NL2SQL — Ask QueryPilot"]
         DE --> WH
         WH --> DASH
         WH --> NL
     end
 
-    BASE{{"Stable baseline — frozen contract"}}
-
-    subgraph FUT["FUTURE — NOT IMPLEMENTED"]
+    subgraph V2["V2 — FOUNDATION (additive, optional)"]
         direction TB
-        F1["Orchestration<br/>optional local Airflow in Docker driving the same run functions"]
-        F2["Object storage<br/>optional S3-compatible self-hosted layer such as MinIO for the pipeline zones"]
-        F3["Zero-cost NL2SQL<br/>local Ollama model as the default provider"]
-        F4["Streaming ingestion<br/>Kafka / RabbitMQ event source — exploratory"]
-        F5["Application tier<br/>Spring Boot / API surface — exploratory"]
+        G1["Apache Airflow orchestration<br/>DAG: querypilot_data_pipeline (LocalExecutor, Docker)"]
+        G2["PySpark transformation<br/>src/spark_transform — joins, filters, aggregation"]
+        G3["Local filesystem storage · same PostgreSQL warehouse"]
+        G1 --> G2 --> G3
     end
 
-    V1 ==> BASE
-    BASE -.-> F1
-    BASE -.-> F2
-    BASE -.-> F3
-    BASE -.-> F4
-    BASE -.-> F5
+    subgraph FUT["NOT IMPLEMENTED — direction only"]
+        direction TB
+        F3["Zero-cost NL2SQL<br/>local Ollama model as the default provider"]
+        F4["Streaming ingestion<br/>Kafka / RabbitMQ event source — exploratory"]
+        F5["Application / API tier<br/>Spring Boot — exploratory"]
+    end
 
-    classDef future fill:#3a2f0b,stroke:#fab219,color:#fff,stroke-dasharray: 5 5
-    class FUT,F1,F2,F3,F4,F5 future
+    V1 ==> V2
+    V2 -.-> FUT
+
+    classDef v2 fill:#3a2f0b,stroke:#fab219,color:#fff
+    classDef future fill:#2a2a2a,stroke:#8b949e,color:#fff,stroke-dasharray: 5 5
+    class V2,G1,G2,G3 v2
+    class FUT,F3,F4,F5 future
 ```
 
-Guiding constraints for any future phase: zero mandatory cloud fees, no paid
-managed services, everything runnable locally, and existing business logic reused
-rather than rewritten. AWS-specific implementations may be *supported* later but
-must never be *required* for normal operation.
+Guiding constraints, unchanged across V1 and V2: zero mandatory cloud fees, no paid
+managed services, no object storage, everything runnable locally, and existing
+business logic reused rather than rewritten.
 
 ---
 
@@ -634,6 +674,7 @@ must never be *required* for normal operation.
 | 6 — Analytics dashboard | Done |
 | 7 — NL2SQL / "Ask QueryPilot" (schema discovery, generation, validation, execution, multi-provider) | Done |
 | 8 — India localization & premium dashboard | Done |
-| Future — orchestration / object storage / local-LLM NL2SQL | Not started (see roadmap) |
+| V2 foundation — Airflow orchestration + PySpark transformation (additive; local, no cloud) | Done ([docs](docs/v2-airflow-pyspark.md)) |
+| Future — local-LLM NL2SQL / streaming / API tier | Not started (see roadmap) |
 
 236 tests passing. The V1 platform above is complete and stable.

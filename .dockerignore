@@ -1,0 +1,21 @@
+# Keep the Airflow image build context small. The repo is bind-mounted
+# into the containers at runtime (see docker-compose.airflow.yml), so the
+# build itself only needs orchestration/requirements-airflow.txt.
+.git/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+__pycache__/
+*.pyc
+
+# Local data + artifacts -- never needed in the image
+data/
+orchestration/logs/
+orchestration/.env.airflow
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Local env / secrets
+.env
